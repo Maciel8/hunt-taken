@@ -1,0 +1,98 @@
+[
+ {
+  "name": "knight_down",
+  "file": "knight_down.png",
+  "w": 26,
+  "h": 34,
+  "src": [
+   0,
+   0,
+   192,
+   256
+  ]
+ },
+ {
+  "name": "knight_left",
+  "file": "knight_left.png",
+  "w": 30,
+  "h": 34,
+  "src": [
+   192,
+   0,
+   384,
+   256
+  ]
+ },
+ {
+  "name": "knight_right",
+  "file": "knight_right.png",
+  "w": 28,
+  "h": 34,
+  "src": [
+   384,
+   0,
+   576,
+   256
+  ]
+ },
+ {
+  "name": "knight_up",
+  "file": "knight_up.png",
+  "w": 27,
+  "h": 34,
+  "src": [
+   576,
+   0,
+   768,
+   256
+  ]
+ },
+ {
+  "name": "knight_down_walk",
+  "file": "knight_down_walk.png",
+  "w": 27,
+  "h": 34,
+  "src": [
+   0,
+   256,
+   192,
+   512
+  ]
+ },
+ {
+  "name": "knight_left_walk",
+  "file": "knight_left_walk.png",
+  "w": 31,
+  "h": 34,
+  "src": [
+   192,
+   256,
+   384,
+   512
+  ]
+ },
+ {
+  "name": "knight_right_walk",
+  "file": "knight_right_walk.png",
+  "w": 27,
+  "h": 34,
+  "src": [
+   384,
+   256,
+   576,
+   512
+  ]
+ },
+ {
+  "name": "knight_up_walk",
+  "file": "knight_up_walk.png",
+  "w": 27,
+  "h": 34,
+  "src": [
+   576,
+   256,
+   768,
+   512
+  ]
+ }
+]

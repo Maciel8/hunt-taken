@@ -1,0 +1,110 @@
+[
+ {
+  "name": "house",
+  "file": "house.png",
+  "w": 96,
+  "h": 80,
+  "src": [
+   0,
+   0,
+   256,
+   256
+  ]
+ },
+ {
+  "name": "house_thatch",
+  "file": "house_thatch.png",
+  "w": 96,
+  "h": 84,
+  "src": [
+   256,
+   0,
+   512,
+   256
+  ]
+ },
+ {
+  "name": "house_thatch2",
+  "file": "house_thatch2.png",
+  "w": 96,
+  "h": 84,
+  "src": [
+   512,
+   0,
+   768,
+   256
+  ]
+ },
+ {
+  "name": "well",
+  "file": "well.png",
+  "w": 96,
+  "h": 94,
+  "src": [
+   0,
+   256,
+   256,
+   512
+  ]
+ },
+ {
+  "name": "lantern_fence",
+  "file": "lantern_fence.png",
+  "w": 96,
+  "h": 60,
+  "src": [
+   256,
+   256,
+   512,
+   512
+  ]
+ },
+ {
+  "name": "stall",
+  "file": "stall.png",
+  "w": 96,
+  "h": 92,
+  "src": [
+   512,
+   256,
+   768,
+   512
+  ]
+ },
+ {
+  "name": "house2",
+  "file": "house2.png",
+  "w": 96,
+  "h": 84,
+  "src": [
+   0,
+   512,
+   256,
+   768
+  ]
+ },
+ {
+  "name": "tent",
+  "file": "tent.png",
+  "w": 96,
+  "h": 79,
+  "src": [
+   256,
+   512,
+   512,
+   768
+  ]
+ },
+ {
+  "name": "mine",
+  "file": "mine.png",
+  "w": 96,
+  "h": 79,
+  "src": [
+   512,
+   512,
+   768,
+   768
+  ]
+ }
+]

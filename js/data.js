@@ -96,11 +96,11 @@ export const HUNTS = [
 export const CAPITAL = { x: 2, y: 2, w: 11, h: 9 };
 export const DEPOT = { x: 7, y: 7 };
 export const HOME = { x: 8, y: 8 };
-export const BOT_SPOTS = [[3, 9], [4, 9], [5, 9], [6, 9], [9, 9], [10, 9], [11, 9], [12, 9]];
+export const BOT_SPOTS = [[3, 9], [4, 9], [5, 9], [6, 9], [9, 9], [10, 9], [11, 9], [3, 8], [4, 8], [10, 8], [11, 8]];
 
 export const BOT_NAMES = [
-  ["Kharzul", "ash", "knight", 6], ["Vexa", "thorn", "sorcerer", 11], ["Drogan", "ash", "paladin", 17], ["Lirael", "thorn", "druid", 23],
-  ["Morrak", "ash", "knight", 34], ["Sylphe", "thorn", "paladin", 48], ["Oberon", "ash", "sorcerer", 66], ["Nyx", "thorn", "knight", 92],
+  ["Kharzul", "ash", "knight", 6], ["Vexa", "thorn", "sorcerer", 11], ["Edric", "grey", "paladin", 14], ["Drogan", "ash", "paladin", 17], ["Lirael", "thorn", "druid", 23],
+  ["Tamsin", "grey", "knight", 29], ["Morrak", "ash", "knight", 34], ["Sylphe", "thorn", "paladin", 48], ["Oberon", "ash", "sorcerer", 66], ["Nyx", "thorn", "knight", 92], ["Halvar", "grey", "druid", 58],
 ];
 
 export const ECON = { BAG_CAP: 20, POT_COST: 20, POT_HEAL: 60, BLESS_COST: 200, MARKET_FEE: .05, PREMIUM_FEE: .03, OFFLINE_H: 12, OFFLINE_H_PREMIUM: 24 };

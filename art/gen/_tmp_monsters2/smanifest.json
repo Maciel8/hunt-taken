@@ -1,0 +1,74 @@
+[
+ {
+  "name": "wasp",
+  "file": "wasp.png",
+  "w": 64,
+  "h": 63,
+  "src": [
+   52,
+   40,
+   207,
+   192
+  ]
+ },
+ {
+  "name": "fallen",
+  "file": "fallen.png",
+  "w": 54,
+  "h": 64,
+  "src": [
+   315,
+   33,
+   458,
+   202
+  ]
+ },
+ {
+  "name": "guardian",
+  "file": "guardian.png",
+  "w": 44,
+  "h": 64,
+  "src": [
+   582,
+   30,
+   704,
+   207
+  ]
+ },
+ {
+  "name": "boss_foreman",
+  "file": "boss_foreman.png",
+  "w": 64,
+  "h": 56,
+  "src": [
+   28,
+   316,
+   213,
+   479
+  ]
+ },
+ {
+  "name": "boss_wasp",
+  "file": "boss_wasp.png",
+  "w": 59,
+  "h": 64,
+  "src": [
+   313,
+   321,
+   462,
+   483
+  ]
+ },
+ {
+  "name": "boss_king",
+  "file": "boss_king.png",
+  "w": 64,
+  "h": 59,
+  "src": [
+   553,
+   312,
+   732,
+   480
+  ]
+ }
+]

@@ -32,7 +32,7 @@ export function newPlayer(name, voc, king) {
     route: [], wp: 0, task: "route", target: null, path: [], dead: 0, attackCd: 0, immune: 0, lastHunt: null, moving: 0, dir: "down", face: 1, created: now() };
 }
 export function makeBots() {
-  S.bots = BOT_NAMES.map(([name, king, voc, lvl], i) => ({ name, king, voc, lvl, exp: expFor(lvl), skills: { sword: 10 + lvl, distance: 10 + lvl, magic: Math.floor(lvl * .8), shield: 8 + lvl }, pots: 10, x: BOT_SPOTS[i][0], y: BOT_SPOTS[i][1], hunt: null, goal: null, path: [], busy: 0, next: now() + rr(10000, 40000), immune: 0, moving: 0, dir: "down", face: 1, hair: ["#3a2415", "#e8a84a", "#2b2b2b", "#b8552e", "#5a3a2a", "#d8c070", "#1a1a1a", "#8a2a2a"][i], rating: 900 + lvl * 8, grow: now() }));
+  S.bots = BOT_NAMES.map(([name, king, voc, lvl], i) => ({ name, king, voc, lvl, exp: expFor(lvl), skills: { sword: 10 + lvl, distance: 10 + lvl, magic: Math.floor(lvl * .8), shield: 8 + lvl }, pots: 10, x: BOT_SPOTS[i][0], y: BOT_SPOTS[i][1], hunt: null, goal: null, path: [], busy: 0, next: now() + rr(10000, 40000), immune: 0, moving: 0, dir: "down", face: 1, hair: ["#3a2415", "#e8a84a", "#2b2b2b", "#b8552e", "#5a3a2a", "#d8c070", "#1a1a1a", "#8a2a2a", "#3a2415", "#e8a84a", "#2b2b2b"][i], rating: 900 + lvl * 8, grow: now() }));
 }
 export function spawnAll() {
   S.mons = [];

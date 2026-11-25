@@ -1,0 +1,254 @@
+[
+ {
+  "name": "bush_dark",
+  "file": "bush_dark.png",
+  "w": 40,
+  "h": 38,
+  "src": [
+   0,
+   0,
+   153,
+   153
+  ]
+ },
+ {
+  "name": "berry_bush",
+  "file": "berry_bush.png",
+  "w": 40,
+  "h": 26,
+  "src": [
+   153,
+   0,
+   307,
+   153
+  ]
+ },
+ {
+  "name": "reed",
+  "file": "reed.png",
+  "w": 36,
+  "h": 40,
+  "src": [
+   307,
+   0,
+   460,
+   153
+  ]
+ },
+ {
+  "name": "lily",
+  "file": "lily.png",
+  "w": 40,
+  "h": 23,
+  "src": [
+   460,
+   0,
+   614,
+   153
+  ]
+ },
+ {
+  "name": "lily2",
+  "file": "lily2.png",
+  "w": 40,
+  "h": 23,
+  "src": [
+   614,
+   0,
+   768,
+   153
+  ]
+ },
+ {
+  "name": "bush_dark2",
+  "file": "bush_dark2.png",
+  "w": 37,
+  "h": 40,
+  "src": [
+   0,
+   153,
+   153,
+   307
+  ]
+ },
+ {
+  "name": "cattail",
+  "file": "cattail.png",
+  "w": 29,
+  "h": 40,
+  "src": [
+   153,
+   153,
+   307,
+   307
+  ]
+ },
+ {
+  "name": "moss_rock",
+  "file": "moss_rock.png",
+  "w": 27,
+  "h": 40,
+  "src": [
+   307,
+   153,
+   460,
+   307
+  ]
+ },
+ {
+  "name": "moss_rock2",
+  "file": "moss_rock2.png",
+  "w": 39,
+  "h": 40,
+  "src": [
+   460,
+   153,
+   614,
+   307
+  ]
+ },
+ {
+  "name": "bone",
+  "file": "bone.png",
+  "w": 40,
+  "h": 38,
+  "src": [
+   614,
+   153,
+   768,
+   307
+  ]
+ },
+ {
+  "name": "wheel",
+  "file": "wheel.png",
+  "w": 40,
+  "h": 40,
+  "src": [
+   0,
+   307,
+   153,
+   460
+  ]
+ },
+ {
+  "name": "mushroom_red",
+  "file": "mushroom_red.png",
+  "w": 40,
+  "h": 36,
+  "src": [
+   153,
+   307,
+   307,
+   460
+  ]
+ },
+ {
+  "name": "bone_pile",
+  "file": "bone_pile.png",
+  "w": 40,
+  "h": 35,
+  "src": [
+   307,
+   307,
+   460,
+   460
+  ]
+ },
+ {
+  "name": "skull",
+  "file": "skull.png",
+  "w": 39,
+  "h": 40,
+  "src": [
+   614,
+   307,
+   768,
+   460
+  ]
+ },
+ {
+  "name": "crate",
+  "file": "crate.png",
+  "w": 40,
+  "h": 37,
+  "src": [
+   0,
+   460,
+   153,
+   614
+  ]
+ },
+ {
+  "name": "campfire",
+  "file": "campfire.png",
+  "w": 40,
+  "h": 31,
+  "src": [
+   153,
+   460,
+   307,
+   614
+  ]
+ },
+ {
+  "name": "barrel",
+  "file": "barrel.png",
+  "w": 34,
+  "h": 40,
+  "src": [
+   307,
+   460,
+   460,
+   614
+  ]
+ },
+ {
+  "name": "hay",
+  "file": "hay.png",
+  "w": 40,
+  "h": 37,
+  "src": [
+   0,
+   614,
+   153,
+   768
+  ]
+ },
+ {
+  "name": "_",
+  "file": "_.png",
+  "w": 8,
+  "h": 40,
+  "src": [
+   153,
+   614,
+   307,
+   768
+  ]
+ },
+ {
+  "name": "pumpkin",
+  "file": "pumpkin.png",
+  "w": 40,
+  "h": 39,
+  "src": [
+   307,
+   614,
+   460,
+   768
+  ]
+ },
+ {
+  "name": "dead_shrub",
+  "file": "dead_shrub.png",
+  "w": 38,
+  "h": 40,
+  "src": [
+   460,
+   614,
+   614,
+   768
+  ]
+ }
+]

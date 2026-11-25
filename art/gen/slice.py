@@ -66,8 +66,22 @@ for idx, bx in enumerate(boxes):
     crop = Image.open(a.sheet).convert("RGBA").crop((x0, y0, x1, y1))
     ca = np.asarray(crop).astype(int)
     cr, cg, cb = ca[..., 0], ca[..., 1], ca[..., 2]
-    cbg = (cr > 110) & (cb > 0.6 * cr) & (cg < 0.55 * np.minimum(cr, cb))
-    am = Image.fromarray(np.where(cbg, 0, 255).astype(np.uint8)).filter(ImageFilter.MinFilter(5))
+    # fundo = magenta OU branco/rosa-claro das linhas da grade, mas só o que encosta na borda do recorte (branco interno do sprite fica)
+    mag = (cr > 110) & (cb > 0.6 * cr) & (cg < 0.75 * np.minimum(cr, cb))
+    white = (np.minimum(np.minimum(cr, cg), cb) > 200)
+    cand = mag | white
+    H2, W2 = cand.shape; conn = np.zeros_like(cand, dtype=bool); st = []
+    for xx in range(W2):
+        for yy in (0, H2 - 1):
+            if cand[yy, xx] and not conn[yy, xx]: conn[yy, xx] = True; st.append((yy, xx))
+    for yy in range(H2):
+        for xx in (0, W2 - 1):
+            if cand[yy, xx] and not conn[yy, xx]: conn[yy, xx] = True; st.append((yy, xx))
+    while st:
+        yy, xx = st.pop()
+        for ny, nx in ((yy - 1, xx), (yy + 1, xx), (yy, xx - 1), (yy, xx + 1)):
+            if 0 <= ny < H2 and 0 <= nx < W2 and cand[ny, nx] and not conn[ny, nx]: conn[ny, nx] = True; st.append((ny, nx))
+    am = Image.fromarray(np.where(conn, 0, 255).astype(np.uint8)).filter(ImageFilter.MinFilter(3))
     alpha = np.asarray(am)
     rgba = np.dstack([ca[..., :3].astype(np.uint8), alpha])
     sp = Image.fromarray(rgba, "RGBA")

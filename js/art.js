@@ -81,8 +81,8 @@ function drawHumanFallback(g, e, tunic) { const px = e.x * T, py = e.y * T; rect
 export function drawUnit(g, e, voc, isPlayer) {
   const px = e.x * T, py = e.y * T, frame = (e.moving > 0 && Math.floor(S.t) % 2 === 0), dir = e.dir || "down";
   g.globalAlpha = .3; disc(g, px + 16, py + 29, 9, "#000"); g.globalAlpha = 1;
-  const name = `${voc}_${dir}${frame ? "_walk" : ""}`, alt = `${voc}_${dir}`;
-  if (!blit(g, A.sp[name] ? name : alt, px + 16, py + 30 - (frame ? 1 : 0), 1, false)) drawHumanFallback(g, e, KING[e.king].tunic);
+  const name = dir === "left" || dir === "right" ? `${voc}_side` : `${voc}_${dir}`;
+  if (!blit(g, A.sp[name] ? name : `${voc}_down`, px + 16, py + 30 - (frame ? 1 : 0), 1, dir === "left")) drawHumanFallback(g, e, KING[e.king].tunic);
   // faixa de cor do reino (ombro)
   rect(g, px + 10, py + 1, 12, 2, KING[e.king].color);
 }

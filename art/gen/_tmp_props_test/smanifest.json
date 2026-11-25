@@ -1,0 +1,194 @@
+[
+ {
+  "name": "bush",
+  "file": "bush.png",
+  "w": 40,
+  "h": 36,
+  "src": [
+   0,
+   0,
+   192,
+   189
+  ]
+ },
+ {
+  "name": "pine_small",
+  "file": "pine_small.png",
+  "w": 28,
+  "h": 40,
+  "src": [
+   251,
+   55,
+   350,
+   192
+  ]
+ },
+ {
+  "name": "oak_small",
+  "file": "oak_small.png",
+  "w": 36,
+  "h": 40,
+  "src": [
+   410,
+   56,
+   536,
+   192
+  ]
+ },
+ {
+  "name": "tree_round",
+  "file": "tree_round.png",
+  "w": 38,
+  "h": 40,
+  "src": [
+   584,
+   0,
+   768,
+   192
+  ]
+ },
+ {
+  "name": "flower_yellow",
+  "file": "flower_yellow.png",
+  "w": 40,
+  "h": 36,
+  "src": [
+   57,
+   246,
+   192,
+   369
+  ]
+ },
+ {
+  "name": "tree_small",
+  "file": "tree_small.png",
+  "w": 37,
+  "h": 40,
+  "src": [
+   192,
+   192,
+   358,
+   369
+  ]
+ },
+ {
+  "name": "flower_red",
+  "file": "flower_red.png",
+  "w": 40,
+  "h": 36,
+  "src": [
+   410,
+   192,
+   538,
+   369
+  ]
+ },
+ {
+  "name": "flower_yellow2",
+  "file": "flower_yellow2.png",
+  "w": 40,
+  "h": 38,
+  "src": [
+   587,
+   192,
+   714,
+   369
+  ]
+ },
+ {
+  "name": "boulder",
+  "file": "boulder.png",
+  "w": 40,
+  "h": 38,
+  "src": [
+   61,
+   425,
+   185,
+   545
+  ]
+ },
+ {
+  "name": "log",
+  "file": "log.png",
+  "w": 40,
+  "h": 33,
+  "src": [
+   232,
+   432,
+   365,
+   544
+  ]
+ },
+ {
+  "name": "stump",
+  "file": "stump.png",
+  "w": 40,
+  "h": 32,
+  "src": [
+   407,
+   436,
+   541,
+   545
+  ]
+ },
+ {
+  "name": "bush2",
+  "file": "bush2.png",
+  "w": 40,
+  "h": 36,
+  "src": [
+   584,
+   426,
+   716,
+   545
+  ]
+ },
+ {
+  "name": "bush3",
+  "file": "bush3.png",
+  "w": 40,
+  "h": 36,
+  "src": [
+   0,
+   597,
+   192,
+   768
+  ]
+ },
+ {
+  "name": "post",
+  "file": "post.png",
+  "w": 23,
+  "h": 40,
+  "src": [
+   266,
+   601,
+   334,
+   717
+  ]
+ },
+ {
+  "name": "mushroom",
+  "file": "mushroom.png",
+  "w": 40,
+  "h": 36,
+  "src": [
+   412,
+   603,
+   537,
+   717
+  ]
+ },
+ {
+  "name": "fence",
+  "file": "fence.png",
+  "w": 40,
+  "h": 33,
+  "src": [
+   584,
+   606,
+   768,
+   768
+  ]
+ }
+]
