@@ -217,7 +217,7 @@ function genMap() {
   const roads = [[[11, 6], HUNTS[0].door], [[11, 7], [HUNTS[1].door[0] - 1, HUNTS[1].door[1]]], [[11, 7], [HUNTS[2].door[0] - 1, HUNTS[2].door[1]]], [HUNTS[0].door, [HUNTS[1].door[0] - 1, HUNTS[1].door[1]]]];
   for (const [[ax, ay], [bx, by]] of roads) {
     const p = bfs(ax, ay, bx, by, free) || [];
-    for (const n of [{ x: ax, y: ay }, ...p]) { if (at(n.x, n.y) === 0) set(n.x, n.y, 1); if (at(n.x, n.y + 1) === 0 && rnd() < .8) set(n.x, n.y + 1, 1); }
+    for (const n of [{ x: ax, y: ay }, ...p]) { if (at(n.x, n.y) === 0) set(n.x, n.y, 1); if (at(n.x, n.y + 1) === 0 && rnd() < .35 && !huntAt(n.x, n.y)) set(n.x, n.y + 1, 1); }
   }
   // bosques ao redor das hunts (não cobrem estrada)
   const forest = (x0, y0, x1, y1, d) => { for (let y = y0; y <= y1; y++) for (let x = x0; x <= x1; x++) if (at(x, y) === 0 && rnd() < d) set(x, y, 3); };
@@ -226,7 +226,7 @@ function genMap() {
   forest(18, 18, 36, 18, .9); forest(18, 30, 36, 30, .9); forest(19, 19, 19, 29, .85); forest(36, 19, 36, 29, .85);
   forest(38, 20, 46, 30, .35); forest(2, 21, 14, 30, .3); forest(1, 11, 3, 20, .4); forest(40, 1, 46, 2, .5); forest(12, 1, 46, 1, .6);
   // trechos de terra e rochas dentro das hunts e no campo
-  for (const h of HUNTS) for (let i = 0; i < 3; i++) { const cx = h.rect.x + 1 + rr(0, h.rect.w - 3), cy = h.rect.y + 1 + rr(0, h.rect.h - 3); for (let y = cy - 1; y <= cy + 1; y++) for (let x = cx - 1; x <= cx + 1; x++) if (at(x, y) === 0 && rnd() < .7) set(x, y, 1); }
+  for (const h of HUNTS) for (let i = 0; i < 4; i++) { const cx = h.rect.x + 1 + Math.floor(rnd() * (h.rect.w - 2)), cy = h.rect.y + 1 + Math.floor(rnd() * (h.rect.h - 2)); if (at(cx, cy) === 0) set(cx, cy, 1); if (at(cx + 1, cy) === 0 && rnd() < .5) set(cx + 1, cy, 1); }
   for (let y = 1; y < MH - 1; y++) for (let x = 1; x < MW - 1; x++) if (at(x, y) === 0 && !inRect(CAPITAL, x, y) && rnd() < .012) set(x, y, 8);
   // garante que as portas e o interior das hunts têm chão
   for (const h of HUNTS) { set(h.door[0], h.door[1], 1); set(h.door[0] - 1, h.door[1], 1); for (let y = h.rect.y; y < h.rect.y + h.rect.h; y++) for (let x = h.rect.x; x < h.rect.x + h.rect.w; x++) if (at(x, y) === 3) set(x, y, 0); }
