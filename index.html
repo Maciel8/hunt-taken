@@ -7,7 +7,7 @@
 <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Nunito:wght@600;700;900&family=JetBrains+Mono:wght@500;700&display=swap">
 <style>
 :root{
-  --bg:#0f1218; --panel:#171c26; --glass:rgba(255,255,255,.05); --line:rgba(255,255,255,.1);
+  --bg:#0f1218; --panel:#14171e; --glass:rgba(255,255,255,.05); --line:rgba(255,255,255,.1);
   --fg:#edf1f7; --muted:#8c96a8; --mint:#5df2c2; --red:#ff5d5d; --green:#64e08a; --blue:#6ea8ff; --gold:#ffcf5a;
   --ui:"Nunito",system-ui,sans-serif; --mono:"JetBrains Mono",ui-monospace,Menlo,monospace;
   color-scheme:dark;
@@ -401,121 +401,144 @@ function showReport(r) {
   document.getElementById("report").hidden = false;
 }
 
-// ---------- arte (tudo em px lógicos de 16 por tile) ----------
-const C = { out: "#2b1b2e", gr1: "#7ccb5f", gr2: "#69b64f", gr3: "#4f9a3d", dirt1: "#d6a06b", dirt2: "#bf8552", dirt3: "#a16a3e", wat1: "#5db4f0", wat2: "#3f93dd", wat3: "#a9e2ff", tree1: "#3d8d47", tree2: "#5cb85b", tree3: "#95dc77", trunk: "#7a4a2a", trunk2: "#5a3418", roof: "#c9463a", roof2: "#9e3129", roofl: "#e36a5c", wall: "#efdcbb", wall2: "#c9b08c", wood: "#8c5a2b", wood2: "#5e3b1c", stone: "#a6afb8", stone2: "#7d8690", stone3: "#d0d7de", cob: "#d7c9ab", cob2: "#bfae8e", skin: "#f3c9a0", pink: "#f5a3b5", white: "#fff6e8", yellow: "#ffd658", orange: "#ff8a4a" };
+// ---------- arte (estilo Tibia: paleta terrosa, volume por sombra, sem contorno grosso; 16 px lógicos por tile) ----------
+const C = {
+  ink: "#141210", gr1: "#4f8a38", gr2: "#447a30", gr3: "#5c9c44", gr4: "#386827",
+  dirt1: "#8a6a44", dirt2: "#7a5a38", dirt3: "#9c7b52", dirt4: "#654828",
+  wat1: "#1d4f8c", wat2: "#2a66ad", wat3: "#5f93cf", wat4: "#153b6b",
+  tree1: "#1e4a21", tree2: "#2d6b2c", tree3: "#468c3b", tree4: "#62aa4e", trunk: "#4e3620", trunk2: "#6b4a2c", trunk3: "#2e1f12",
+  roof: "#8f3f2f", roof2: "#6e2c20", roof3: "#ad5540", wall: "#8a867c", wall2: "#6c6962", wall3: "#a8a498", mortar: "#55534c",
+  wood: "#6b4a2c", wood2: "#4a3119", wood3: "#8a6640", stone: "#7c7c76", stone2: "#55554f", stone3: "#9d9d96",
+  cob: "#8f8a7c", cob2: "#6f6b60", cob3: "#a6a192", skin: "#d9a877", skin2: "#b8865a", pink: "#d98b9a", white: "#e8e2d2", yellow: "#e2b84a", orange: "#d97a3a", red: "#a8322a",
+};
 function rect(g, x, y, w, h, c) { g.fillStyle = c; g.fillRect(x, y, w, h); }
 function disc(g, cx, cy, r, c) { g.fillStyle = c; for (let dy = -r; dy <= r; dy++) { const w = Math.round(Math.sqrt(r * r - dy * dy)); g.fillRect(cx - w, cy + dy, 2 * w + 1, 1); } }
+function noise(g, px, py, x, y, cols, n, salt) { const h = hash(x * 3 + salt, y * 7 + salt); for (let i = 0; i < n; i++) { const o = (h >> (i * 4)) & 255; rect(g, px + (o % 16), py + ((o >> 4) % 16), 1, 1, cols[i % cols.length]); } }
 
 function tileGrass(g, px, py, x, y) {
   rect(g, px, py, 16, 16, C.gr1);
+  noise(g, px, py, x, y, [C.gr2, C.gr4, C.gr3, C.gr2], 9, 1);
   const h = hash(x, y);
-  for (let i = 0; i < 3; i++) { const o = (h >> (i * 5)) & 31; rect(g, px + (o % 16), py + ((o * 7) % 16), 1, 1, C.gr2); }
-  if (h % 7 === 0) { const ox = (h >> 3) % 12, oy = (h >> 7) % 12; rect(g, px + ox, py + oy, 1, 2, C.gr3); rect(g, px + ox + 2, py + oy + 1, 1, 2, C.gr3); }
-  if (h % 13 === 0) { const ox = 2 + (h >> 4) % 10, oy = 2 + (h >> 9) % 10; const col = [C.white, C.yellow, C.orange, C.pink][(h >> 2) % 4]; rect(g, px + ox, py + oy - 1, 1, 1, col); rect(g, px + ox - 1, py + oy, 3, 1, col); rect(g, px + ox, py + oy + 1, 1, 1, col); rect(g, px + ox, py + oy, 1, 1, C.yellow === col ? C.orange : C.yellow); }
-  if (h % 17 === 0) { disc(g, px + 8, py + 10, 4, C.tree1); disc(g, px + 7, py + 9, 2, C.tree2); rect(g, px + 6, py + 7, 2, 1, C.tree3); }
+  if (h % 5 === 0) { const ox = (h >> 3) % 13, oy = (h >> 7) % 12; rect(g, px + ox, py + oy, 1, 3, C.gr3); rect(g, px + ox + 1, py + oy + 1, 1, 2, C.gr4); rect(g, px + ox + 2, py + oy, 1, 3, C.gr3); }
+  if (h % 23 === 0) { const ox = 3 + (h >> 4) % 9, oy = 3 + (h >> 9) % 9; rect(g, px + ox, py + oy, 2, 1, C.white); rect(g, px + ox + 3, py + oy + 2, 1, 1, C.yellow); }
+  if (h % 19 === 0) { disc(g, px + 8, py + 10, 4, C.tree2); disc(g, px + 7, py + 9, 3, C.tree3); rect(g, px + 6, py + 7, 2, 1, C.tree4); rect(g, px + 8, py + 13, 3, 1, C.tree1); }
 }
 function tileDirt(g, px, py, x, y) {
   rect(g, px, py, 16, 16, C.dirt1);
+  noise(g, px, py, x, y, [C.dirt2, C.dirt3, C.dirt4, C.dirt2], 10, 2);
   const n = (dx, dy) => ground(x + dx, y + dy) === 1;
-  const gcol = ground(x, y - 1) === 2 ? C.wat2 : C.gr1;
-  if (!n(0, -1)) { rect(g, px, py, 16, 1, C.dirt3); rect(g, px, py + 1, 16, 1, C.dirt2); }
-  if (!n(0, 1)) { rect(g, px, py + 15, 16, 1, C.dirt3); rect(g, px, py + 14, 16, 1, C.dirt2); }
-  if (!n(-1, 0)) { rect(g, px, py, 1, 16, C.dirt3); rect(g, px + 1, py, 1, 16, C.dirt2); }
-  if (!n(1, 0)) { rect(g, px + 15, py, 1, 16, C.dirt3); rect(g, px + 14, py, 1, 16, C.dirt2); }
-  // cantos arredondados
-  if (!n(0, -1) && !n(-1, 0)) { rect(g, px, py, 2, 2, C.gr1); rect(g, px + 2, py, 1, 1, C.gr1); rect(g, px, py + 2, 1, 1, C.gr1); rect(g, px + 2, py + 1, 1, 1, C.dirt3); rect(g, px + 1, py + 2, 1, 1, C.dirt3); }
-  if (!n(0, -1) && !n(1, 0)) { rect(g, px + 14, py, 2, 2, C.gr1); rect(g, px + 13, py, 1, 1, C.gr1); rect(g, px + 15, py + 2, 1, 1, C.gr1); rect(g, px + 13, py + 1, 1, 1, C.dirt3); rect(g, px + 14, py + 2, 1, 1, C.dirt3); }
-  if (!n(0, 1) && !n(-1, 0)) { rect(g, px, py + 14, 2, 2, C.gr1); rect(g, px + 2, py + 15, 1, 1, C.gr1); rect(g, px, py + 13, 1, 1, C.gr1); rect(g, px + 2, py + 14, 1, 1, C.dirt3); rect(g, px + 1, py + 13, 1, 1, C.dirt3); }
-  if (!n(0, 1) && !n(1, 0)) { rect(g, px + 14, py + 14, 2, 2, C.gr1); rect(g, px + 13, py + 15, 1, 1, C.gr1); rect(g, px + 15, py + 13, 1, 1, C.gr1); rect(g, px + 13, py + 14, 1, 1, C.dirt3); rect(g, px + 14, py + 13, 1, 1, C.dirt3); }
-  const h = hash(x, y); if (h % 3 === 0) { rect(g, px + 4 + (h >> 4) % 8, py + 4 + (h >> 8) % 8, 2, 1, C.dirt2); rect(g, px + 3 + (h >> 6) % 9, py + 9 + (h >> 10) % 4, 1, 1, C.dirt3); }
-  void gcol;
+  const h = hash(x, y);
+  const jag = (side) => { // transição dentada com grama invadindo a terra
+    for (let i = 0; i < 16; i += 2) {
+      const d = ((h >> (i / 2)) & 1) ? 2 : 1, c = ((h >> (i / 2 + 3)) & 1) ? C.gr2 : C.gr1;
+      if (side === 0) rect(g, px + i, py, 2, d, c); if (side === 1) rect(g, px + i, py + 16 - d, 2, d, c);
+      if (side === 2) rect(g, px, py + i, d, 2, c); if (side === 3) rect(g, px + 16 - d, py + i, d, 2, c);
+    }
+  };
+  if (!n(0, -1)) jag(0); if (!n(0, 1)) jag(1); if (!n(-1, 0)) jag(2); if (!n(1, 0)) jag(3);
+  if (h % 4 === 0) { rect(g, px + 3 + (h >> 4) % 9, py + 4 + (h >> 8) % 8, 3, 2, C.dirt4); rect(g, px + 4 + (h >> 4) % 9, py + 4 + (h >> 8) % 8, 1, 1, C.dirt3); }
 }
 function tileWater(g, px, py, x, y) {
-  rect(g, px, py, 16, 16, C.wat2);
-  const n = (dx, dy) => ground(x + dx, y + dy) === 2;
-  if (!n(0, -1)) { rect(g, px, py, 16, 1, C.out); rect(g, px, py + 1, 16, 2, C.wat3); }
-  if (!n(0, 1)) { rect(g, px, py + 15, 16, 1, C.out); rect(g, px, py + 13, 16, 2, C.wat1); }
-  if (!n(-1, 0)) { rect(g, px, py, 1, 16, C.out); rect(g, px + 1, py, 2, 16, C.wat3); }
-  if (!n(1, 0)) { rect(g, px + 15, py, 1, 16, C.out); rect(g, px + 13, py, 2, 16, C.wat1); }
-  const h = hash(x, y); rect(g, px + 2 + h % 8, py + 5 + (h >> 5) % 7, 4, 1, C.wat1); rect(g, px + 6 + (h >> 3) % 6, py + 9 + (h >> 8) % 5, 3, 1, C.wat3);
+  rect(g, px, py, 16, 16, C.wat1);
+  noise(g, px, py, x, y, [C.wat4, C.wat2, C.wat4], 6, 3);
+  const n = (dx, dy) => ground(x + dx, y + dy) === 2, h = hash(x, y);
+  rect(g, px + 2 + h % 7, py + 4 + (h >> 5) % 8, 5, 1, C.wat2); rect(g, px + 6 + (h >> 3) % 6, py + 9 + (h >> 8) % 5, 3, 1, C.wat3);
+  if (!n(0, -1)) { rect(g, px, py, 16, 1, C.dirt4); rect(g, px, py + 1, 16, 1, C.wat3); }
+  if (!n(0, 1)) { rect(g, px, py + 15, 16, 1, C.dirt4); rect(g, px, py + 14, 16, 1, C.wat2); }
+  if (!n(-1, 0)) { rect(g, px, py, 1, 16, C.dirt4); rect(g, px + 1, py, 1, 16, C.wat3); }
+  if (!n(1, 0)) { rect(g, px + 15, py, 1, 16, C.dirt4); rect(g, px + 14, py, 1, 16, C.wat2); }
 }
 function tileCobble(g, px, py, x, y) {
-  rect(g, px, py, 16, 16, C.cob2);
-  const h = hash(x, y), o = h % 2 ? 2 : 0;
-  for (let j = 0; j < 4; j++) for (let i = 0; i < 4; i++) { const sx = px + i * 4 + (j % 2 ? o : 0), sy = py + j * 4; rect(g, sx + 1, sy + 1, 3, 3, ((i + j + (h >> 3)) % 5 === 0) ? C.stone3 : C.cob); }
+  rect(g, px, py, 16, 16, C.mortar);
+  const h = hash(x, y), o = h % 2 ? 3 : 0;
+  for (let j = 0; j < 2; j++) for (let i = 0; i < 3; i++) {
+    const sx = px + ((i * 6 + (j ? o : 0)) % 16), sy = py + j * 8, w = 5, c = ((i + j + (h >> 3)) % 4 === 0) ? C.cob3 : ((i + j) % 3 === 0 ? C.cob2 : C.cob);
+    rect(g, sx, sy + 1, w, 6, c); rect(g, sx, sy + 1, w, 1, C.cob3); rect(g, sx, sy + 6, w, 1, C.cob2);
+  }
 }
 function drawGround() {
   const g = base.getContext("2d");
   for (let y = 0; y < MH; y++) for (let x = 0; x < MW; x++) {
     const t = at(x, y), px = x * T, py = y * T, gr = ground(x, y);
     if (gr === 2) tileWater(g, px, py, x, y); else if (gr === 1) tileDirt(g, px, py, x, y); else if (gr === 4) tileCobble(g, px, py, x, y); else tileGrass(g, px, py, x, y);
-    if (t === 8) { disc(g, px + 8, py + 10, 6, C.out); disc(g, px + 8, py + 10, 5, C.stone2); disc(g, px + 7, py + 9, 3, C.stone); rect(g, px + 5, py + 6, 2, 1, C.stone3); }
-    if (t === 7) { rect(g, px, py + 7, 16, 2, C.wood2); rect(g, px, py + 11, 16, 2, C.wood2); rect(g, px + 2, py + 4, 3, 11, C.out); rect(g, px + 3, py + 5, 1, 9, C.wood); rect(g, px + 10, py + 4, 3, 11, C.out); rect(g, px + 11, py + 5, 1, 9, C.wood); rect(g, px, py + 8, 16, 1, C.wood); rect(g, px, py + 12, 16, 1, C.wood); }
+    if (t === 8) { g.globalAlpha = .35; disc(g, px + 9, py + 12, 6, C.ink); g.globalAlpha = 1; disc(g, px + 8, py + 10, 6, C.stone2); disc(g, px + 7, py + 9, 5, C.stone); disc(g, px + 6, py + 7, 2, C.stone3); rect(g, px + 4, py + 12, 8, 1, C.stone2); }
+    if (t === 7) { rect(g, px, py + 6, 16, 2, C.wood2); rect(g, px, py + 10, 16, 2, C.wood2); rect(g, px, py + 6, 16, 1, C.wood3); rect(g, px, py + 10, 16, 1, C.wood3); rect(g, px + 2, py + 3, 3, 12, C.wood2); rect(g, px + 2, py + 3, 1, 12, C.wood3); rect(g, px + 10, py + 3, 3, 12, C.wood2); rect(g, px + 10, py + 3, 1, 12, C.wood3); }
   }
+  // sombra suave das árvores no chão
+  for (let y = 0; y < MH; y++) for (let x = 0; x < MW; x++) if (at(x, y) === 3) { g.globalAlpha = .28; disc(g, x * T + 9, y * T + 13, 6, C.ink); g.globalAlpha = 1; }
 }
 function drawTree(g, x, y) {
-  const h = hash(x, y), px = x * T, py = y * T, big = h % 3 === 0, r = big ? 8 : 7, cx = px + 8, cy = py + 5;
-  rect(g, px + 5, py + 10, 6, 6, C.out); rect(g, px + 6, py + 11, 4, 5, C.trunk); rect(g, px + 6, py + 11, 1, 5, C.trunk2);
-  disc(g, cx, cy, r, C.out); disc(g, cx, cy, r - 1, C.tree1);
-  disc(g, cx - 1, cy - 1, r - 3, C.tree2); disc(g, cx - 2, cy - 3, Math.max(1, r - 5), C.tree3);
-  rect(g, cx + 2, cy + 2, 3, 2, C.tree1);
-  if ((h >> 4) % 4 === 0) { rect(g, cx + 2, cy - 2, 1, 1, C.pink); rect(g, cx - 4, cy + 2, 1, 1, C.pink); }
+  const h = hash(x, y), px = x * T, py = y * T, big = h % 3 === 0, r = big ? 8 : 7, cx = px + 8, cy = py + 2;
+  rect(g, px + 6, py + 8, 5, 8, C.trunk3); rect(g, px + 7, py + 8, 3, 8, C.trunk); rect(g, px + 7, py + 8, 1, 8, C.trunk2);
+  disc(g, cx, cy, r, C.tree1);
+  disc(g, cx - 1, cy - 1, r - 2, C.tree2);
+  disc(g, cx - 2, cy - 3, r - 4, C.tree3);
+  rect(g, cx - 3, cy - 5, 2, 1, C.tree4); rect(g, cx - 5, cy - 2, 1, 1, C.tree4); rect(g, cx + 1, cy - 4, 1, 1, C.tree4);
+  rect(g, cx + 2, cy + 3, 4, 2, C.tree1); rect(g, cx - 1, cy + 5, 5, 1, C.tree1);
+  if ((h >> 4) % 5 === 0) { rect(g, cx + 2, cy - 1, 1, 1, C.red); rect(g, cx - 4, cy + 2, 1, 1, C.red); }
 }
 function drawHouse(g, tx, ty) {
-  const px = tx * T, py = ty * T, w = 48, roofH = 22;
-  rect(g, px, py + roofH - 2, w, 28, C.out); rect(g, px + 1, py + roofH - 1, w - 2, 26, C.wall);
-  rect(g, px + 1, py + roofH - 1, w - 2, 2, C.wall2); rect(g, px + 1, py + 44, w - 2, 2, C.wall2);
-  rect(g, px + 7, py + 26, 10, 10, C.out); rect(g, px + 8, py + 27, 8, 8, C.wat1); rect(g, px + 11, py + 27, 2, 8, C.out); rect(g, px + 8, py + 30, 8, 2, C.out);
-  rect(g, px + 30, py + 26, 10, 10, C.out); rect(g, px + 31, py + 27, 8, 8, C.wat1); rect(g, px + 34, py + 27, 2, 8, C.out); rect(g, px + 31, py + 30, 8, 2, C.out);
-  rect(g, px + 19, py + 32, 10, 15, C.out); rect(g, px + 20, py + 33, 8, 14, C.wood); rect(g, px + 20, py + 33, 8, 1, C.wood2); rect(g, px + 26, py + 40, 1, 1, C.yellow);
-  rect(g, px - 2, py + 2, w + 4, roofH, C.out); rect(g, px - 1, py + 3, w + 2, roofH - 2, C.roof);
-  rect(g, px - 1, py + 3, w + 2, 2, C.roofl); for (let i = 0; i < 4; i++) rect(g, px - 1, py + 7 + i * 4, w + 2, 1, C.roof2);
-  rect(g, px - 2, py + roofH - 1, w + 4, 2, C.out); rect(g, px - 1, py + roofH, w + 2, 1, C.wood2);
-  rect(g, px + 36, py - 3, 7, 10, C.out); rect(g, px + 37, py - 2, 5, 8, C.stone2); rect(g, px + 37, py - 2, 5, 1, C.stone3); rect(g, px + 38, py - 5, 3, 3, C.out); rect(g, px + 39, py - 4, 1, 1, C.white);
+  const px = tx * T, py = ty * T, w = 48;
+  // parede de pedra (face frontal) com sombra lateral
+  rect(g, px, py + 20, w, 28, C.wall2); rect(g, px + 1, py + 21, w - 2, 26, C.wall);
+  for (let j = 0; j < 6; j++) for (let i = 0; i < 8; i++) { const sx = px + 1 + i * 6 + (j % 2 ? 3 : 0), sy = py + 21 + j * 4; if (sx + 5 <= px + w - 1) { rect(g, sx, sy, 5, 3, ((i + j) % 4 === 0) ? C.wall3 : C.wall); rect(g, sx, sy + 3, 5, 1, C.mortar); rect(g, sx + 5, sy, 1, 4, C.mortar); } }
+  rect(g, px + w - 1, py + 20, 1, 28, C.wall2); rect(g, px, py + 46, w, 2, C.mortar);
+  // janelas e porta
+  rect(g, px + 7, py + 26, 10, 9, C.wood2); rect(g, px + 8, py + 27, 8, 7, "#2d4a6b"); rect(g, px + 11, py + 27, 2, 7, C.wood2); rect(g, px + 8, py + 30, 8, 1, C.wood2); rect(g, px + 8, py + 27, 2, 1, "#6a9ad0");
+  rect(g, px + 30, py + 26, 10, 9, C.wood2); rect(g, px + 31, py + 27, 8, 7, "#2d4a6b"); rect(g, px + 34, py + 27, 2, 7, C.wood2); rect(g, px + 31, py + 30, 8, 1, C.wood2); rect(g, px + 31, py + 27, 2, 1, "#6a9ad0");
+  rect(g, px + 19, py + 31, 10, 16, C.wood2); rect(g, px + 20, py + 32, 8, 15, C.wood); rect(g, px + 20, py + 32, 1, 15, C.wood3); rect(g, px + 24, py + 32, 1, 15, C.wood2); rect(g, px + 26, py + 39, 1, 1, C.yellow);
+  // telhado de telhas com inclinação
+  rect(g, px - 2, py, w + 4, 22, C.roof2);
+  for (let j = 0; j < 5; j++) for (let i = 0; i < 13; i++) { const sx = px - 2 + i * 4 + (j % 2 ? 2 : 0), sy = py + 1 + j * 4; rect(g, sx, sy, 3, 3, (i + j) % 7 === 0 ? C.roof3 : C.roof); rect(g, sx, sy + 3, 3, 1, C.roof2); }
+  rect(g, px - 2, py, w + 4, 1, C.roof3); rect(g, px - 2, py + 20, w + 4, 2, C.ink); g.globalAlpha = .35; rect(g, px - 2, py + 18, w + 4, 2, C.ink); g.globalAlpha = 1;
+  // chaminé com volume
+  rect(g, px + 36, py - 4, 7, 11, C.stone2); rect(g, px + 37, py - 3, 5, 9, C.stone); rect(g, px + 37, py - 3, 5, 1, C.stone3); rect(g, px + 36, py - 5, 7, 1, C.stone3); rect(g, px + 38, py - 7, 2, 2, C.stone3);
 }
 function drawStall(g, tx, ty) {
   const px = (tx - 1) * T, py = ty * T;
-  rect(g, px + 2, py + 6, 28, 10, C.out); rect(g, px + 3, py + 7, 26, 8, C.wood); rect(g, px + 3, py + 10, 26, 1, C.wood2);
-  rect(g, px + 5, py + 8, 5, 3, C.orange); rect(g, px + 12, py + 8, 5, 3, C.tree2); rect(g, px + 19, py + 8, 5, 3, C.yellow);
-  rect(g, px + 2, py - 6, 2, 13, C.out); rect(g, px + 28, py - 6, 2, 13, C.out);
-  rect(g, px, py - 8, 32, 7, C.out); for (let i = 0; i < 8; i++) rect(g, px + 1 + i * 4, py - 7, 4, 5, i % 2 ? C.white : C.roof);
-  for (let i = 0; i < 8; i++) rect(g, px + 1 + i * 4, py - 2, 4, 1, i % 2 ? C.wall2 : C.roof2);
+  rect(g, px + 2, py + 6, 28, 10, C.wood2); rect(g, px + 3, py + 7, 26, 8, C.wood); rect(g, px + 3, py + 7, 26, 1, C.wood3); rect(g, px + 3, py + 11, 26, 1, C.wood2);
+  rect(g, px + 5, py + 8, 5, 3, C.orange); rect(g, px + 12, py + 8, 5, 3, C.tree3); rect(g, px + 19, py + 8, 5, 3, C.yellow); rect(g, px + 7, py + 8, 1, 1, C.white);
+  rect(g, px + 2, py - 6, 2, 13, C.wood2); rect(g, px + 28, py - 6, 2, 13, C.wood2);
+  rect(g, px, py - 9, 32, 7, C.red); for (let i = 0; i < 8; i++) if (i % 2) rect(g, px + i * 4, py - 9, 4, 7, "#c9b48a");
+  rect(g, px, py - 9, 32, 1, "#d8c9a4"); rect(g, px, py - 3, 32, 1, C.ink);
 }
 function drawOver() {
   const g = over.getContext("2d");
   g.clearRect(0, 0, over.width, over.height);
   for (let y = 0; y < MH; y++) for (let x = 0; x < MW; x++) if (at(x, y) === 3) drawTree(g, x, y);
   drawHouse(g, 3, 2); drawHouse(g, 7, 2); drawStall(g, DEPOT.x, DEPOT.y);
-  // placas das hunts
-  for (const h of HUNTS) { const px = h.door[0] * T, py = h.door[1] * T; rect(g, px + 6, py - 14, 3, 13, C.out); rect(g, px + 7, py - 13, 1, 12, C.wood); rect(g, px + 1, py - 18, 14, 8, C.out); rect(g, px + 2, py - 17, 12, 6, C.wood); rect(g, px + 4, py - 15, 8, 1, C.wood2); rect(g, px + 4, py - 13, 6, 1, C.wood2); }
+  for (const h of HUNTS) { const px = h.door[0] * T, py = h.door[1] * T; rect(g, px + 6, py - 14, 3, 13, C.wood2); rect(g, px + 7, py - 13, 1, 12, C.wood3); rect(g, px + 1, py - 18, 14, 8, C.wood2); rect(g, px + 2, py - 17, 12, 6, C.wood); rect(g, px + 2, py - 17, 12, 1, C.wood3); rect(g, px + 4, py - 15, 8, 1, C.wood2); rect(g, px + 4, py - 13, 6, 1, C.wood2); }
 }
 function drawHuman(g, x, y, tunic, dark, hair, opts) {
-  const px = x * T, py = y * T - (opts.bob ? 1 : 0);
-  g.globalAlpha = .25; disc(g, px + 8, py + 15, 4, C.out); g.globalAlpha = 1;
-  rect(g, px + 3, py + 1, 10, 10, C.out); rect(g, px + 4, py + 2, 8, 8, C.skin);
-  rect(g, px + 4, py + 2, 8, 3, hair); rect(g, px + 3, py + 3, 1, 3, hair); rect(g, px + 12, py + 3, 1, 3, hair); rect(g, px + 5, py + 5, 2, 1, hair);
-  const ex = opts.face < 0 ? 5 : 7; rect(g, px + ex, py + 6, 1, 2, C.out); rect(g, px + ex + 3, py + 6, 1, 2, C.out);
-  rect(g, px + ex, py + 8, 1, 1, C.pink); rect(g, px + ex + 3, py + 8, 1, 1, C.pink);
-  rect(g, px + 3, py + 10, 10, 5, C.out); rect(g, px + 4, py + 11, 8, 3, tunic); rect(g, px + 4, py + 13, 8, 1, dark);
-  rect(g, px + 4, py + 14, 3, 2, C.out); rect(g, px + 9, py + 14, 3, 2, C.out); rect(g, px + 5, py + 14, 1, 1, dark); rect(g, px + 10, py + 14, 1, 1, dark);
-  if (opts.sword) { const sx = opts.face < 0 ? px + 1 : px + 13; rect(g, sx, py + 6, 2, 8, C.out); rect(g, sx, py + 7, 1, 5, C.stone3); rect(g, sx - (opts.face < 0 ? 0 : 1), py + 12, 3, 1, C.wood); }
-  if (opts.shield) { const sx = opts.face < 0 ? px + 12 : px + 1; rect(g, sx, py + 9, 3, 5, C.out); rect(g, sx + 1, py + 10, 1, 3, tunic); }
+  const px = x * T, py = y * T - (opts.bob ? 1 : 0), f = opts.face;
+  g.globalAlpha = .3; disc(g, px + 8, py + 15, 4, C.ink); g.globalAlpha = 1;
+  // pernas e botas
+  rect(g, px + 5, py + 11, 3, 4, dark); rect(g, px + 9, py + 11, 3, 4, dark); rect(g, px + 5, py + 14, 3, 2, C.trunk3); rect(g, px + 9, py + 14, 3, 2, C.trunk3);
+  // corpo com ombros e sombra do lado oposto à luz
+  rect(g, px + 4, py + 6, 9, 6, tunic); rect(g, px + 4, py + 6, 9, 1, "#ffffff22"); rect(g, px + 11, py + 6, 2, 6, dark); rect(g, px + 4, py + 11, 9, 1, dark);
+  rect(g, px + 3, py + 7, 1, 4, C.skin); rect(g, px + 13, py + 7, 1, 4, C.skin2);
+  // cabeça
+  rect(g, px + 5, py + 1, 6, 6, C.skin); rect(g, px + 10, py + 2, 1, 5, C.skin2);
+  rect(g, px + 5, py + 0, 6, 2, hair); rect(g, px + 4, py + 1, 1, 3, hair); rect(g, px + 11, py + 1, 1, 2, hair);
+  rect(g, px + (f < 0 ? 6 : 7), py + 3, 1, 1, C.ink); rect(g, px + (f < 0 ? 8 : 9), py + 3, 1, 1, C.ink);
+  if (opts.sword) { const sx = f < 0 ? px + 1 : px + 14; rect(g, sx, py + 3, 1, 9, C.stone3); rect(g, sx, py + 3, 1, 1, C.white); rect(g, sx - 1, py + 10, 3, 1, C.wood3); rect(g, sx, py + 11, 1, 2, C.wood2); }
+  if (opts.shield) { const sx = f < 0 ? px + 12 : px + 1; rect(g, sx, py + 6, 3, 6, dark); rect(g, sx + 1, py + 7, 1, 4, C.stone3); }
 }
 function drawMon(g, m) {
   const px = m.x * T, py = m.y * T, f = m.face;
-  g.globalAlpha = .25; disc(g, px + 8, py + 14, 4, C.out); g.globalAlpha = 1;
+  g.globalAlpha = .3; disc(g, px + 8, py + 14, 4, C.ink); g.globalAlpha = 1;
   if (m.type === "rato") {
-    disc(g, px + 8, py + 10, 5, C.out); disc(g, px + 8, py + 10, 4, C.stone); disc(g, px + 7, py + 9, 2, C.stone3);
-    rect(g, px + (f < 0 ? 4 : 10), py + 5, 3, 3, C.out); rect(g, px + (f < 0 ? 5 : 11), py + 6, 1, 1, C.pink);
-    rect(g, px + (f < 0 ? 11 : 2), py + 11, 3, 1, C.pink); rect(g, px + (f < 0 ? 5 : 10), py + 9, 1, 1, C.out); rect(g, px + (f < 0 ? 2 : 13), py + 10, 1, 1, C.pink);
+    disc(g, px + 8, py + 10, 4, "#5a4a3c"); disc(g, px + 7, py + 9, 3, "#7a6650"); rect(g, px + 6, py + 7, 2, 1, "#8c7860");
+    rect(g, px + (f < 0 ? 4 : 10), py + 6, 2, 2, "#5a4a3c"); rect(g, px + (f < 0 ? 4 : 11), py + 6, 1, 1, C.pink);
+    rect(g, px + (f < 0 ? 11 : 1), py + 11, 4, 1, "#b58a8a"); rect(g, px + (f < 0 ? 5 : 10), py + 9, 1, 1, C.ink); rect(g, px + (f < 0 ? 2 : 13), py + 10, 1, 1, C.pink);
   } else if (m.type === "javali") {
-    rect(g, px + 2, py + 5, 12, 9, C.out); rect(g, px + 3, py + 6, 10, 7, C.trunk); rect(g, px + 3, py + 6, 10, 2, "#9a6240");
-    rect(g, px + (f < 0 ? 0 : 12), py + 7, 4, 5, C.out); rect(g, px + (f < 0 ? 1 : 13), py + 8, 2, 3, C.pink);
-    rect(g, px + (f < 0 ? 2 : 11), py + 11, 1, 2, C.white); rect(g, px + (f < 0 ? 4 : 11), py + 7, 1, 1, C.white);
-    rect(g, px + 4, py + 13, 2, 2, C.out); rect(g, px + 10, py + 13, 2, 2, C.out); rect(g, px + 5, py + 3, 3, 3, C.out); rect(g, px + 9, py + 3, 3, 3, C.out);
+    rect(g, px + 2, py + 6, 12, 8, "#4a3220"); rect(g, px + 3, py + 6, 10, 6, "#6b4a30"); rect(g, px + 3, py + 6, 10, 2, "#7f5c3c"); rect(g, px + 3, py + 11, 10, 1, "#3a2416");
+    rect(g, px + (f < 0 ? 0 : 12), py + 7, 4, 5, "#5a3c26"); rect(g, px + (f < 0 ? 1 : 13), py + 9, 2, 2, C.pink);
+    rect(g, px + (f < 0 ? 2 : 11), py + 11, 1, 2, C.white); rect(g, px + (f < 0 ? 4 : 11), py + 7, 1, 1, C.ink);
+    rect(g, px + 4, py + 13, 2, 2, "#2e1c10"); rect(g, px + 10, py + 13, 2, 2, "#2e1c10"); rect(g, px + 5, py + 4, 2, 3, "#4a3220"); rect(g, px + 9, py + 4, 2, 3, "#4a3220");
   } else {
-    drawHuman(g, m.x, m.y, "#3b3f55", "#23263a", "#23263a", { face: f, sword: true });
-    rect(g, px + 4, py + 6, 8, 3, "#4a4e66"); rect(g, px + (f < 0 ? 5 : 7), py + 6, 1, 2, C.yellow); rect(g, px + (f < 0 ? 8 : 10), py + 6, 1, 2, C.yellow);
+    drawHuman(g, m.x, m.y, "#3b3f4c", "#23262f", "#2a2a2a", { face: f, sword: true });
+    rect(g, px + 5, py + 2, 6, 2, "#7a2a2a"); rect(g, px + 5, py + 4, 6, 2, "#5a4a3c");
   }
 }
 
