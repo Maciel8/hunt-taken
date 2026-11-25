@@ -12,18 +12,18 @@ os.makedirs(SPR, exist_ok=True); os.makedirs(TEX, exist_ok=True)
 PY = sys.executable
 
 SHEETS = [
-    ("knight_down.png", "1x1", 36, "knight_down"),
-    ("knight_side.png", "1x1", 36, "knight_side"),
-    ("knight_up.png", "1x1", 36, "knight_up"),
-    ("paladin_down.png", "1x1", 36, "paladin_down"),
-    ("paladin_side.png", "1x1", 36, "paladin_side"),
-    ("paladin_up.png", "1x1", 36, "paladin_up"),
-    ("sorcerer_down.png", "1x1", 36, "sorcerer_down"),
-    ("sorcerer_side.png", "1x1", 36, "sorcerer_side"),
-    ("sorcerer_up.png", "1x1", 36, "sorcerer_up"),
-    ("druid_down.png", "1x1", 36, "druid_down"),
-    ("druid_side.png", "1x1", 36, "druid_side"),
-    ("druid_up.png", "1x1", 36, "druid_up"),
+    ("knight_down.png", "1x1", 40, "knight_down"),
+    ("knight_side.png", "1x1", 40, "knight_side"),
+    ("knight_up.png", "1x1", 40, "knight_up"),
+    ("paladin_down.png", "1x1", 40, "paladin_down"),
+    ("paladin_side.png", "1x1", 40, "paladin_side"),
+    ("paladin_up.png", "1x1", 40, "paladin_up"),
+    ("sorcerer_down.png", "1x1", 40, "sorcerer_down"),
+    ("sorcerer_side.png", "1x1", 40, "sorcerer_side"),
+    ("sorcerer_up.png", "1x1", 40, "sorcerer_up"),
+    ("druid_down.png", "1x1", 40, "druid_down"),
+    ("druid_side.png", "1x1", 40, "druid_side"),
+    ("druid_up.png", "1x1", 40, "druid_up"),
 
     # (arquivo, grid, target, nomes)
     ("props_test.png", "4x4", 40, "bush,pine_small,oak_small,tree_round,flower_yellow,tree_small,flower_red,flower_yellow2,boulder,log,stump,bush2,bush3,post,mushroom,fence"),

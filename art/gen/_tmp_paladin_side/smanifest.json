@@ -1,0 +1,14 @@
+[
+ {
+  "name": "paladin_side",
+  "file": "paladin_side.png",
+  "w": 24,
+  "h": 40,
+  "src": [
+   155,
+   47,
+   415,
+   477
+  ]
+ }
+]

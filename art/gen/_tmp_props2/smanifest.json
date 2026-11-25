@@ -3,7 +3,7 @@
   "name": "bush_dark",
   "file": "bush_dark.png",
   "w": 40,
-  "h": 38,
+  "h": 37,
   "src": [
    0,
    0,
@@ -98,8 +98,8 @@
  {
   "name": "moss_rock2",
   "file": "moss_rock2.png",
-  "w": 39,
-  "h": 40,
+  "w": 40,
+  "h": 38,
   "src": [
    460,
    153,
@@ -183,7 +183,7 @@
   "name": "campfire",
   "file": "campfire.png",
   "w": 40,
-  "h": 31,
+  "h": 30,
   "src": [
    153,
    460,
@@ -207,7 +207,7 @@
   "name": "hay",
   "file": "hay.png",
   "w": 40,
-  "h": 37,
+  "h": 36,
   "src": [
    0,
    614,

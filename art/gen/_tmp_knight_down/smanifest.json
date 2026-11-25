@@ -1,0 +1,14 @@
+[
+ {
+  "name": "knight_down",
+  "file": "knight_down.png",
+  "w": 29,
+  "h": 40,
+  "src": [
+   57,
+   36,
+   383,
+   481
+  ]
+ }
+]

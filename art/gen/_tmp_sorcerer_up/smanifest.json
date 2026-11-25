@@ -1,0 +1,14 @@
+[
+ {
+  "name": "sorcerer_up",
+  "file": "sorcerer_up.png",
+  "w": 21,
+  "h": 40,
+  "src": [
+   146,
+   73,
+   349,
+   455
+  ]
+ }
+]

@@ -1,0 +1,14 @@
+[
+ {
+  "name": "sorcerer_side",
+  "file": "sorcerer_side.png",
+  "w": 23,
+  "h": 40,
+  "src": [
+   166,
+   77,
+   377,
+   438
+  ]
+ }
+]

@@ -1,0 +1,14 @@
+[
+ {
+  "name": "druid_side",
+  "file": "druid_side.png",
+  "w": 20,
+  "h": 40,
+  "src": [
+   139,
+   59,
+   339,
+   456
+  ]
+ }
+]

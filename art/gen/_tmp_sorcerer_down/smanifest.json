@@ -1,0 +1,14 @@
+[
+ {
+  "name": "sorcerer_down",
+  "file": "sorcerer_down.png",
+  "w": 24,
+  "h": 40,
+  "src": [
+   0,
+   0,
+   512,
+   512
+  ]
+ }
+]

@@ -1,0 +1,14 @@
+[
+ {
+  "name": "knight_side",
+  "file": "knight_side.png",
+  "w": 27,
+  "h": 40,
+  "src": [
+   95,
+   41,
+   385,
+   472
+  ]
+ }
+]

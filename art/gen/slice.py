@@ -20,7 +20,7 @@ im = Image.open(a.sheet).convert("RGB")
 arr = np.asarray(im).astype(int)
 r, g, b = arr[..., 0], arr[..., 1], arr[..., 2]
 # magenta: R e B altos, G baixo (tolerante a compressão e sombra da IA)
-bg = (r > 110) & (b > 0.6 * r) & (g < 0.55 * np.minimum(r, b))
+bg = (r > 110) & (b > 0.5 * r) & (g < 0.55 * np.minimum(r, b))
 fg = ~bg
 os.makedirs(a.out, exist_ok=True)
 names = [n for n in a.names.split(",") if n]
@@ -67,7 +67,7 @@ for idx, bx in enumerate(boxes):
     ca = np.asarray(crop).astype(int)
     cr, cg, cb = ca[..., 0], ca[..., 1], ca[..., 2]
     # fundo = magenta OU branco/rosa-claro das linhas da grade, mas só o que encosta na borda do recorte (branco interno do sprite fica)
-    mag = (cr > 110) & (cb > 0.6 * cr) & (cg < 0.75 * np.minimum(cr, cb))
+    mag = (cr > 110) & (cb > 0.5 * cr) & (cg < 0.75 * np.minimum(cr, cb))
     white = (np.minimum(np.minimum(cr, cg), cb) > 200)
     cand = mag | white
     H2, W2 = cand.shape; conn = np.zeros_like(cand, dtype=bool); st = []
@@ -87,7 +87,7 @@ for idx, bx in enumerate(boxes):
     sp = Image.fromarray(rgba, "RGBA")
     # tira franja magenta: pixels com borda rosada viram a cor do vizinho opaco mais próximo (simples: escurece o canal R/B)
     px = np.asarray(sp).astype(int)
-    fringe = (px[..., 3] > 0) & (px[..., 0] > 100) & (px[..., 2] > 0.6 * px[..., 0]) & (px[..., 1] < 0.6 * np.minimum(px[..., 0], px[..., 2]))
+    fringe = (px[..., 3] > 0) & (px[..., 0] > 100) & (px[..., 2] > 0.5 * px[..., 0]) & (px[..., 1] < 0.6 * np.minimum(px[..., 0], px[..., 2]))
     px[fringe, 3] = 0
     sp = Image.fromarray(px.astype(np.uint8), "RGBA")
     bb = sp.getbbox()
