@@ -413,7 +413,7 @@ const C = {
 };
 function rect(g, x, y, w, h, c) { g.fillStyle = c; g.fillRect(x, y, w, h); }
 function disc(g, cx, cy, r, c) { g.fillStyle = c; for (let dy = -r; dy <= r; dy++) { const w = Math.round(Math.sqrt(r * r - dy * dy)); g.fillRect(cx - w, cy + dy, 2 * w + 1, 1); } }
-function noise(g, px, py, x, y, cols, n, salt, size) { let h = hash(x * 3 + salt, y * 7 + salt); for (let i = 0; i < n; i++) { h = (h * 1103515245 + 12345) >>> 0; rect(g, px + (h % size), py + ((h >> 8) % size), 1 + ((h >> 16) & 1), 1, cols[(h >> 20) % cols.length]); } }
+function noise(g, px, py, x, y, cols, n, salt, size) { for (let i = 0; i < n; i++) { const h = hash(x * 131 + i * 17 + salt, y * 71 + i * 29 + salt * 3); rect(g, px + ((h >>> 3) % size), py + ((h >>> 11) % size), 1 + ((h >>> 19) & 1), 1, cols[(h >>> 21) % cols.length]); } }
 
 // ---- sprites como mapas de pixel ----
 const spriteCache = new Map();
