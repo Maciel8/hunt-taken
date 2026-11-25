@@ -622,8 +622,8 @@ function drawUnit(g, e, pal, id, opts) {
 function drawMon(g, m) {
   const px = m.x * T, py = m.y * T, mirror = m.face < 0;
   g.globalAlpha = .3; disc(g, px + 16, py + 28, 8, C.ink); g.globalAlpha = 1;
-  if (m.type === "rato") g.drawImage(sprite("rat", RAT, PAL_RAT, 8, 18, mirror), px, py);
-  else if (m.type === "javali") g.drawImage(sprite("boar", BOAR, PAL_BOAR, 6, 14, mirror), px, py);
+  if (m.type === "rato") g.drawImage(sprite("rat", RAT, PAL_RAT, 8, 18, mirror), 0, 0, 32, 32, px - 16, py - 24, 64, 64);
+  else if (m.type === "javali") g.drawImage(sprite("boar", BOAR, PAL_BOAR, 6, 14, mirror), 0, 0, 32, 32, px - 12, py - 24, 64, 64);
   else drawUnit(g, { x: m.x, y: m.y, dir: mirror ? "left" : "right", moving: 0 }, humanPal("#3b3f4c", "#23262f", "#4a4e5e", "#2a2a2a"), "bandit", { sword: true });
 }
 
