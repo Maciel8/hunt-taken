@@ -1,0 +1,627 @@
+<title>Hunt Taken</title>
+<meta name="claude:viewport-fit-sides" content="cover">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Nunito:wght@600;700;900&family=JetBrains+Mono:wght@500;700&display=swap">
+<style>
+/* Layout: mapa à esquerda em vidro escuro, painel à direita com cartões (personagem, hunt, feed); uma coluna no celular. Tema único escuro: o mundo é noite de pixel art. */
+:root{
+  --bg:#0a0d14; --panel:#121724; --glass:rgba(255,255,255,.05); --line:rgba(255,255,255,.1);
+  --fg:#edf1f7; --muted:#8c96a8; --mint:#5df2c2; --red:#ff5d5d; --green:#64e08a; --blue:#6ea8ff; --gold:#ffcf5a;
+  --ui:"Nunito",system-ui,sans-serif; --mono:"JetBrains Mono",ui-monospace,Menlo,monospace;
+  color-scheme:dark;
+}
+*{box-sizing:border-box}
+body{margin:0;background:var(--bg);color:var(--fg);font-family:var(--ui);font-size:14px;line-height:1.45;padding-left:max(16px,env(safe-area-inset-left,0px));padding-right:max(16px,env(safe-area-inset-right,0px));padding-block:12px 24px}
+header{display:flex;align-items:center;justify-content:space-between;gap:12px;flex-wrap:wrap;max-width:1180px;margin:0 auto 10px}
+h1{font-size:22px;font-weight:900;margin:0;letter-spacing:.02em}
+h1 small{font-weight:700;color:var(--muted);font-size:12px;margin-left:8px}
+.kingdom{display:inline-flex;align-items:center;gap:6px;padding:4px 10px;border-radius:999px;background:var(--glass);border:1px solid var(--line);font-weight:700;font-size:12px}
+.dot{width:10px;height:10px;border-radius:50%;display:inline-block}
+main{display:grid;grid-template-columns:minmax(0,1fr) 340px;gap:12px;max-width:1180px;margin:0 auto}
+@media (max-width:900px){main{grid-template-columns:1fr}}
+.map-wrap{position:relative;background:var(--panel);border:1px solid var(--line);border-radius:14px;overflow:hidden;min-width:0}
+canvas#view{display:block;width:100%;height:auto;image-rendering:pixelated;touch-action:none;cursor:crosshair}
+.toolbar{display:flex;gap:8px;flex-wrap:wrap;padding:10px;border-top:1px solid var(--line);align-items:center}
+button{font-family:var(--ui);font-weight:700;font-size:13px;color:var(--fg);background:var(--glass);border:1px solid var(--line);border-radius:10px;padding:8px 12px;cursor:pointer}
+button:hover{background:rgba(255,255,255,.09)}
+button.primary{background:var(--mint);color:#07110e;border-color:transparent}
+button.danger{background:rgba(255,93,93,.15);border-color:rgba(255,93,93,.4)}
+button:disabled{opacity:.45;cursor:default}
+button:focus-visible{outline:2px solid var(--mint);outline-offset:2px}
+.hint{color:var(--muted);font-size:12px;margin-left:auto}
+.cards{display:grid;gap:10px;min-width:0}
+.card{background:var(--panel);border:1px solid var(--line);border-radius:14px;padding:12px 14px;min-width:0}
+.card h2{font-size:12px;letter-spacing:.12em;text-transform:uppercase;color:var(--muted);margin:0 0 8px;font-weight:900}
+.row{display:flex;justify-content:space-between;gap:10px;align-items:baseline;padding:2px 0}
+.row b{font-family:var(--mono);font-weight:700;font-variant-numeric:tabular-nums}
+.bar{height:8px;background:rgba(255,255,255,.08);border-radius:99px;overflow:hidden;margin:4px 0 8px}
+.bar i{display:block;height:100%;border-radius:99px;background:var(--mint)}
+.bar.hp i{background:var(--red)}
+.skills{display:grid;grid-template-columns:1fr 1fr;gap:4px 12px;font-size:13px}
+.occ{display:flex;align-items:center;gap:8px;padding:4px 0}
+.occ .name{flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.occ button{padding:4px 8px;font-size:12px}
+#feed{list-style:none;margin:0;padding:0;max-height:220px;overflow:auto;font-size:12.5px}
+#feed li{padding:4px 0;border-bottom:1px solid var(--line)}
+#feed li span{color:var(--muted);font-family:var(--mono);font-size:11px;margin-right:6px}
+.tag{font-size:11px;font-weight:900;padding:1px 6px;border-radius:6px;background:var(--glass)}
+.modal{position:fixed;inset:0;background:rgba(5,7,12,.7);display:flex;align-items:center;justify-content:center;padding:16px;z-index:20}
+.modal .box{background:var(--panel);border:1px solid var(--line);border-radius:16px;padding:20px;max-width:440px;width:100%}
+.modal h3{margin:0 0 4px;font-size:20px;font-weight:900}
+.modal p{margin:0 0 12px;color:var(--muted)}
+.rep{display:grid;grid-template-columns:1fr 1fr;gap:8px;margin:12px 0}
+.rep div{background:var(--glass);border-radius:10px;padding:10px}
+.rep b{display:block;font-family:var(--mono);font-size:20px}
+.rep small{color:var(--muted)}
+.toast{position:absolute;left:50%;top:12px;transform:translateX(-50%);background:rgba(10,13,20,.9);border:1px solid var(--line);border-radius:10px;padding:8px 14px;font-weight:700;pointer-events:none;opacity:0;transition:opacity .2s}
+.toast.show{opacity:1}
+.toast.bad{border-color:rgba(255,93,93,.6);color:#ffb3b3}
+@media (prefers-reduced-motion:reduce){.toast{transition:none}}
+</style>
+
+<header>
+  <h1>Hunt Taken <small>protótipo · Campos</small></h1>
+  <div style="display:flex;gap:8px;flex-wrap:wrap;align-items:center">
+    <span class="kingdom"><i class="dot" style="background:var(--blue)"></i> Greyhold (você)</span>
+    <span class="kingdom"><i class="dot" style="background:var(--red)"></i> Ashvale</span>
+    <span class="kingdom"><i class="dot" style="background:var(--green)"></i> Thornmere</span>
+  </div>
+</header>
+
+<main>
+  <section class="map-wrap">
+    <canvas id="view" width="832" height="544"></canvas>
+    <div class="toast" id="toast"></div>
+    <div class="toolbar">
+      <button id="btnRoute" class="primary">Desenhar rota</button>
+      <button id="btnClear">Limpar rota</button>
+      <button id="btnDeposit">Depositar agora</button>
+      <button id="btnBless">Bênção (200 gold)</button>
+      <button id="btnSpeed">Velocidade x1</button>
+      <span class="hint" id="hint">Toque no mapa pra ver uma hunt; use Desenhar rota pra marcar até 8 pontos.</span>
+    </div>
+  </section>
+
+  <aside class="cards">
+    <div class="card">
+      <h2>Personagem</h2>
+      <div class="row"><span><b id="pname">Bielz</b> · knight</span><span>level <b id="lvl">1</b></span></div>
+      <div class="bar"><i id="expbar" style="width:0%"></i></div>
+      <div class="row"><span>Vida</span><b id="hp">100 / 100</b></div>
+      <div class="bar hp"><i id="hpbar" style="width:100%"></i></div>
+      <div class="skills">
+        <div class="row"><span>Espada</span><b id="skSword">10</b></div>
+        <div class="row"><span>Escudo</span><b id="skShield">10</b></div>
+        <div class="row"><span>Gold</span><b id="gold" style="color:var(--gold)">0</b></div>
+        <div class="row"><span>Poções</span><b id="pots">5</b></div>
+        <div class="row"><span>Mochila</span><b id="bag">0 / 20</b></div>
+        <div class="row"><span>Bênção</span><b id="bless">não</b></div>
+      </div>
+    </div>
+
+    <div class="card">
+      <h2>Hunt atual</h2>
+      <div class="row"><span id="huntName">Fora de hunt</span><span><b id="huntProfit">0</b> gold/h</span></div>
+      <div class="row" style="color:var(--muted);font-size:12.5px"><span>Sua parte do spawn</span><b id="share">100%</b></div>
+      <div id="occupants"></div>
+    </div>
+
+    <div class="card">
+      <h2>Hoje</h2>
+      <div class="row"><span>Exp ganha</span><b id="sExp">0</b></div>
+      <div class="row"><span>Mortes</span><b id="sDeaths">0</b></div>
+      <div class="row"><span>Hunts tomadas</span><b id="sTaken">0</b></div>
+      <div class="row"><span>Vezes expulso</span><b id="sLost">0</b></div>
+    </div>
+
+    <div class="card">
+      <h2>Feed</h2>
+      <ul id="feed"></ul>
+    </div>
+  </aside>
+</main>
+
+<div class="modal" id="report" hidden>
+  <div class="box">
+    <h3 id="repTitle">Relatório de volta</h3>
+    <p id="repSub">Enquanto você estava fora</p>
+    <div class="rep" id="repGrid"></div>
+    <div id="repNotes" style="color:var(--muted);font-size:13px;margin-bottom:12px"></div>
+    <button class="primary" id="repClose" style="width:100%">Continuar</button>
+  </div>
+</div>
+
+<script>
+(() => {
+"use strict";
+// ---------- constantes ----------
+const T = 32, MW = 48, MH = 32;                       // tile, largura e altura do mapa em tiles
+const TICK = 400;                                      // ms por tick de simulação
+const BAG_CAP = 20, POT_HEAL = 60, POT_COST = 20, BLESS_COST = 200;
+const KING = { grey: { name: "Greyhold", color: "#6ea8ff" }, ash: { name: "Ashvale", color: "#ff5d5d" }, thorn: { name: "Thornmere", color: "#64e08a" } };
+const SAVE_KEY = "hunt-taken-proto-v1";
+
+// ---------- util ----------
+let seed = 1337;
+const rnd = () => { seed = (seed * 1664525 + 1013904223) >>> 0; return seed / 4294967296; };
+const rr = (a, b) => a + Math.floor(Math.random() * (b - a + 1));
+const clamp = (v, a, b) => Math.max(a, Math.min(b, v));
+const now = () => Date.now();
+const fmt = n => n >= 1000 ? (n / 1000).toFixed(n >= 10000 ? 0 : 1) + "k" : String(Math.floor(n));
+const hhmm = () => { const d = new Date(); return String(d.getHours()).padStart(2, "0") + ":" + String(d.getMinutes()).padStart(2, "0"); };
+
+// ---------- mundo ----------
+// terreno: 0 grama, 1 terra, 2 água, 3 árvore, 4 pedra (capital), 5 depósito
+const map = new Uint8Array(MW * MH);
+const at = (x, y) => (x < 0 || y < 0 || x >= MW || y >= MH) ? 3 : map[y * MW + x];
+const walk = (x, y) => { const t = at(x, y); return t !== 2 && t !== 3; };
+
+const CAPITAL = { x: 2, y: 2, w: 9, h: 8 };
+const DEPOT = { x: 6, y: 5 };
+const HUNTS = [
+  { id: "ratos", name: "Campo dos Ratos", rect: { x: 15, y: 3, w: 11, h: 8 }, mon: "rato", spawns: 7, respawn: 7000 },
+  { id: "javalis", name: "Bosque dos Javalis", rect: { x: 31, y: 4, w: 13, h: 10 }, mon: "javali", spawns: 6, respawn: 11000 },
+  { id: "bandidos", name: "Acampamento dos Bandidos", rect: { x: 20, y: 19, w: 15, h: 10 }, mon: "bandido", spawns: 6, respawn: 14000 },
+];
+const MONS = {
+  rato: { name: "Rato-do-campo", hp: 22, atk: 4, def: 0, exp: 5, gold: [1, 3], drop: null, lvl: 1, color: "#9aa0a6" },
+  javali: { name: "Javali", hp: 80, atk: 9, def: 2, exp: 25, gold: [3, 7], drop: { name: "Presa de javali", chance: .02, value: 120 }, lvl: 8, color: "#8a5a3c" },
+  bandido: { name: "Bandido", hp: 170, atk: 16, def: 5, exp: 60, gold: [8, 16], drop: { name: "Capa de couro", chance: .01, value: 400 }, lvl: 15, color: "#3b3f55" },
+};
+const inRect = (r, x, y) => x >= r.x && y >= r.y && x < r.x + r.w && y < r.y + r.h;
+const huntAt = (x, y) => HUNTS.find(h => inRect(h.rect, x, y)) || null;
+
+function genMap() {
+  for (let y = 0; y < MH; y++) for (let x = 0; x < MW; x++) {
+    let t = rnd() < .18 ? 1 : 0;
+    if (x === 0 || y === 0 || x === MW - 1 || y === MH - 1) t = 3;
+    map[y * MW + x] = t;
+  }
+  // lago
+  for (let y = 13; y < 19; y++) for (let x = 4; x < 14; x++) if (rnd() < .85 || (y > 13 && y < 18 && x > 4 && x < 13)) map[y * MW + x] = 2;
+  // bosques de árvores (obstáculos) em volta das hunts
+  const forest = (x0, y0, x1, y1, d) => { for (let y = y0; y <= y1; y++) for (let x = x0; x <= x1; x++) if (rnd() < d) map[y * MW + x] = 3; };
+  forest(14, 2, 27, 2, .9); forest(14, 12, 27, 12, .8); forest(28, 2, 28, 13, .7);
+  forest(30, 3, 44, 3, .9); forest(30, 15, 44, 15, .8); forest(45, 3, 45, 15, .9);
+  forest(18, 18, 36, 18, .85); forest(18, 30, 36, 30, .85); forest(18, 19, 18, 29, .75); forest(36, 19, 36, 29, .75);
+  forest(38, 20, 46, 30, .25); forest(2, 22, 14, 30, .2);
+  // portas nos bosques
+  const door = (x, y) => { map[y * MW + x] = 1; };
+  door(20, 12); door(21, 12); door(28, 8); door(28, 9); door(34, 15); door(35, 15); door(26, 18); door(27, 18); door(18, 24); door(18, 25);
+  // capital
+  for (let y = CAPITAL.y; y < CAPITAL.y + CAPITAL.h; y++) for (let x = CAPITAL.x; x < CAPITAL.x + CAPITAL.w; x++) map[y * MW + x] = 4;
+  map[DEPOT.y * MW + DEPOT.x] = 5;
+  // hunts sem árvore dentro
+  for (const h of HUNTS) for (let y = h.rect.y; y < h.rect.y + h.rect.h; y++) for (let x = h.rect.x; x < h.rect.x + h.rect.w; x++) if (map[y * MW + x] === 3) map[y * MW + x] = rnd() < .3 ? 1 : 0;
+}
+genMap();
+
+// BFS no grid
+function path(sx, sy, tx, ty) {
+  if (!walk(tx, ty)) return null;
+  const prev = new Int32Array(MW * MH).fill(-1), q = [sy * MW + sx]; prev[sy * MW + sx] = sy * MW + sx;
+  const goal = ty * MW + tx;
+  for (let i = 0; i < q.length; i++) {
+    const c = q[i]; if (c === goal) break;
+    const cx = c % MW, cy = (c / MW) | 0;
+    for (const [dx, dy] of [[1, 0], [-1, 0], [0, 1], [0, -1]]) {
+      const nx = cx + dx, ny = cy + dy; if (!walk(nx, ny)) continue;
+      const n = ny * MW + nx; if (prev[n] !== -1) continue;
+      prev[n] = c; q.push(n);
+    }
+  }
+  if (prev[goal] === -1) return null;
+  const out = []; let c = goal;
+  while (c !== sy * MW + sx) { out.push({ x: c % MW, y: (c / MW) | 0 }); c = prev[c]; }
+  return out.reverse();
+}
+
+// ---------- estado ----------
+const S = {
+  p: { name: "Bielz", king: "grey", x: DEPOT.x + 1, y: DEPOT.y + 1, lvl: 1, exp: 0, hp: 112, sword: 10, swordXp: 0, shield: 10, shieldXp: 0, gold: 30, pots: 5, bag: [], bless: false, route: [], wp: 0, task: "route", target: null, path: [], dead: 0, attackCd: 0, immune: 0, lastHunt: null },
+  mons: [], bots: [], feed: [], stats: { exp: 0, deaths: 0, taken: 0, lost: 0, gold: 0, drops: 0 },
+  lastSeen: now(), speed: 1, routeMode: false, t: 0,
+};
+const P = S.p;
+const hpMax = () => 100 + 12 * P.lvl;
+const expFor = l => Math.floor(50 * Math.pow(l, 2.2));          // exp acumulada pra chegar no level l
+const skillNext = s => Math.floor(40 * Math.pow(1.1, s - 10));
+const power = e => e.lvl * 2 + (e.sword || 10) * 3 + (e.shield || 10) * 2 + (e.pots || 0) * .5;
+
+function log(msg, kind) {
+  S.feed.unshift({ t: hhmm(), msg, kind });
+  if (S.feed.length > 40) S.feed.pop();
+  renderFeed();
+}
+let toastTimer;
+function toast(msg, bad) {
+  const el = document.getElementById("toast"); el.textContent = msg; el.className = "toast show" + (bad ? " bad" : "");
+  clearTimeout(toastTimer); toastTimer = setTimeout(() => el.className = "toast", 2200);
+}
+
+// ---------- monstros ----------
+function spawnAll() {
+  for (const h of HUNTS) for (let i = 0; i < h.spawns; i++) spawnMon(h);
+}
+function freeTile(r) {
+  for (let i = 0; i < 40; i++) { const x = r.x + rr(0, r.w - 1), y = r.y + rr(0, r.h - 1); if (walk(x, y)) return { x, y }; }
+  return { x: r.x, y: r.y };
+}
+function spawnMon(h, delay) {
+  const m = MONS[h.mon], pos = freeTile(h.rect);
+  S.mons.push({ hunt: h.id, type: h.mon, x: pos.x, y: pos.y, hp: m.hp, alive: !delay, respawnAt: delay ? now() + delay : 0, cd: 0, botTarget: null });
+}
+
+// ---------- bots (jogadores rivais) ----------
+const BOT_NAMES = [["Kharzul", "ash"], ["Vexa", "thorn"], ["Drogan", "ash"], ["Lirael", "thorn"]];
+function makeBots() {
+  S.bots = BOT_NAMES.map(([name, king], i) => ({ name, king, lvl: [6, 11, 17, 23][i], sword: [14, 18, 24, 30][i], shield: [12, 16, 20, 26][i], pots: 10, x: DEPOT.x + 2 + i, y: DEPOT.y + 3, hunt: null, goal: null, path: [], busy: 0, next: now() + rr(15000, 45000), immune: 0 }));
+}
+
+// ---------- mecânica ----------
+function occupantsOf(id) {
+  const o = [];
+  if (P.lastHunt === id) o.push(P);
+  for (const b of S.bots) if (b.hunt === id && b.busy > 0) o.push(b);
+  return o;
+}
+function huntProfitPerHour(h) {
+  const m = MONS[h.mon];
+  const perHour = h.spawns * 3600000 / (h.respawn + 6000);
+  return perHour * ((m.gold[0] + m.gold[1]) / 2 + (m.drop ? m.drop.chance * m.drop.value : 0));
+}
+
+function gainExp(n) {
+  P.exp += n; S.stats.exp += n;
+  while (P.exp >= expFor(P.lvl + 1)) { P.lvl++; P.hp = hpMax(); log(`Level ${P.lvl}!`, "good"); toast(`Level ${P.lvl}`); }
+}
+function skillUp(k) {
+  P[k + "Xp"]++;
+  if (P[k + "Xp"] >= skillNext(P[k])) { P[k + "Xp"] = 0; P[k]++; log(`${k === "sword" ? "Espada" : "Escudo"} subiu pra ${P[k]}`, "good"); }
+}
+
+function playerDies(cause) {
+  const loss = P.bless ? .01 : .05;
+  const lost = Math.floor(P.exp * loss);
+  P.exp = Math.max(0, P.exp - lost);
+  while (P.lvl > 1 && P.exp < expFor(P.lvl)) P.lvl--;
+  const bagLost = P.bag.length;
+  P.bag = []; P.bless = false; S.stats.deaths++;
+  P.x = DEPOT.x + 1; P.y = DEPOT.y + 1; P.hp = hpMax(); P.path = []; P.target = null; P.dead = 12; P.task = "route"; P.lastHunt = null;
+  log(`Você morreu pra ${cause}. Perdeu ${lost} de exp${bagLost ? ` e ${bagLost} itens` : ""}.`, "bad");
+  toast("Você morreu", true);
+}
+
+function resolveChallenge(att, def) {
+  const pa = power(att) * (1 + (Math.random() * .2 - .1)), pd = power(def) * (1 + (Math.random() * .2 - .1));
+  return pa > pd;
+}
+function botTakesHunt(b) {
+  if (P.immune > 0 || P.lvl < 5 || b.lvl > P.lvl + 20) return;
+  if (resolveChallenge(b, P)) {
+    const stolen = Math.floor(P.gold * .1); P.gold -= stolen;
+    const lost = Math.floor(P.exp * .01); P.exp -= lost;
+    P.x = DEPOT.x + 1; P.y = DEPOT.y + 1; P.hp = hpMax(); P.path = []; P.target = null; P.immune = 15000 / TICK; P.dead = 8; P.lastHunt = null; S.stats.lost++;
+    log(`HUNT TAKEN: ${b.name} (${KING[b.king].name}) te expulsou. -${lost} exp, -${stolen} gold.`, "bad");
+    toast(`${b.name} tomou sua hunt`, true);
+  } else {
+    b.immune = 30000 / TICK; b.busy = 0; b.hunt = null; b.next = now() + 20000; b.x = DEPOT.x + 2; b.y = DEPOT.y + 3; b.path = [];
+    log(`${b.name} tentou tomar sua hunt e perdeu.`, "good"); toast(`${b.name} perdeu o desafio`);
+  }
+}
+function playerChallenges(b) {
+  if (b.immune > 0) { toast(`${b.name} está protegido`, true); return; }
+  if (b.lvl < P.lvl - 20) { toast("Alvo muito abaixo do seu level", true); return; }
+  if (resolveChallenge(P, b)) {
+    const stolen = Math.floor(30 + b.lvl * 4); P.gold += stolen; S.stats.taken++;
+    b.immune = 15000 / TICK; b.busy = 0; b.hunt = null; b.next = now() + rr(30000, 60000); b.x = DEPOT.x + 2; b.y = DEPOT.y + 3; b.path = [];
+    log(`HUNT TAKEN: você expulsou ${b.name} (${KING[b.king].name}). +${stolen} gold do chão.`, "good"); toast(`Você tomou a hunt de ${b.name}`);
+  } else {
+    const lost = Math.floor(P.exp * .01); P.exp -= lost;
+    P.x = DEPOT.x + 1; P.y = DEPOT.y + 1; P.hp = hpMax(); P.path = []; P.target = null; P.immune = 15000 / TICK; P.dead = 8; P.lastHunt = null; S.stats.lost++;
+    log(`Você desafiou ${b.name} e perdeu. -${lost} exp.`, "bad"); toast("Perdeu o desafio", true);
+  }
+  renderUI();
+}
+
+// ---------- tick do jogador ----------
+function stepAlong(e) {
+  if (!e.path.length) return false;
+  const n = e.path.shift(); e.x = n.x; e.y = n.y; return true;
+}
+function nearestMon(x, y, range) {
+  let best = null, bd = 1e9;
+  for (const m of S.mons) if (m.alive) { const d = Math.abs(m.x - x) + Math.abs(m.y - y); if (d <= range && d < bd) { bd = d; best = m; } }
+  return best;
+}
+function playerTick() {
+  if (P.immune > 0) P.immune--;
+  if (P.dead > 0) { P.dead--; return; }
+  P.hp = Math.min(hpMax(), P.hp + .6);
+  P.lastHunt = huntAt(P.x, P.y)?.id || null;
+  // poção
+  if (P.hp < hpMax() * .5 && P.pots > 0) { P.pots--; P.hp = Math.min(hpMax(), P.hp + POT_HEAL); }
+  // precisa depositar?
+  const needDeposit = P.bag.length >= BAG_CAP || (P.pots === 0 && P.gold >= POT_COST);
+  if (P.task === "route" && needDeposit) { P.task = "deposit"; P.path = path(P.x, P.y, DEPOT.x, DEPOT.y + 1) || []; P.target = null; log("Mochila cheia ou sem poção: voltando pro depósito."); }
+  if (P.task === "deposit") {
+    if (P.x === DEPOT.x && P.y === DEPOT.y + 1) {
+      let sold = 0; for (const it of P.bag) sold += it.value; P.gold += sold; const n = P.bag.length; P.bag = [];
+      const want = Math.min(10 - P.pots, Math.floor(P.gold / POT_COST)); if (want > 0) { P.pots += want; P.gold -= want * POT_COST; }
+      log(`Depósito: vendeu ${n} itens por ${sold} gold, comprou ${Math.max(0, want)} poções.`);
+      P.task = "route"; P.path = [];
+    } else if (!P.path.length) P.path = path(P.x, P.y, DEPOT.x, DEPOT.y + 1) || [];
+    stepAlong(P); return;
+  }
+  // combate: monstro perto?
+  const h = huntAt(P.x, P.y);
+  if (!P.target || !P.target.alive) P.target = nearestMon(P.x, P.y, 5);
+  if (P.target) {
+    const m = P.target, d = Math.abs(m.x - P.x) + Math.abs(m.y - P.y);
+    if (d <= 1) {
+      if (P.attackCd-- <= 0) {
+        P.attackCd = 1;
+        const mt = MONS[m.type];
+        const dmg = Math.max(1, Math.floor((6 + P.sword * 1.1) * (.6 + Math.random() * .6) - mt.def));
+        m.hp -= dmg; skillUp("sword");
+        if (m.hp <= 0) {
+          m.alive = false; m.respawnAt = now() + HUNTS.find(x => x.id === m.hunt).respawn;
+          gainExp(mt.exp); const g = rr(mt.gold[0], mt.gold[1]); P.gold += g; S.stats.gold += g;
+          if (mt.drop && Math.random() < mt.drop.chance) { P.bag.push({ name: mt.drop.name, value: mt.drop.value }); S.stats.drops++; log(`Dropou ${mt.drop.name}!`, "good"); toast(`Drop raro: ${mt.drop.name}`); }
+          P.target = null;
+        }
+      }
+      return;
+    }
+    if (!P.path.length || P.path[P.path.length - 1].x !== m.x || P.path[P.path.length - 1].y !== m.y) { const pp = path(P.x, P.y, m.x, m.y); P.path = pp ? pp.slice(0, -1) : []; }
+    if (P.path.length) { stepAlong(P); return; }
+  }
+  // rota
+  if (!P.route.length) return;
+  const w = P.route[P.wp];
+  if (P.x === w.x && P.y === w.y) { P.wp = (P.wp + 1) % P.route.length; P.path = []; return; }
+  if (!P.path.length) { P.path = path(P.x, P.y, w.x, w.y) || []; if (!P.path.length) { P.wp = (P.wp + 1) % P.route.length; return; } }
+  stepAlong(P);
+}
+
+// ---------- tick dos monstros ----------
+function monTick() {
+  const t = now();
+  for (const m of S.mons) {
+    if (!m.alive) { if (t >= m.respawnAt) { const h = HUNTS.find(x => x.id === m.hunt); const pos = freeTile(h.rect); m.x = pos.x; m.y = pos.y; m.hp = MONS[m.type].hp; m.alive = true; } continue; }
+    const d = Math.abs(m.x - P.x) + Math.abs(m.y - P.y);
+    if (P.dead === 0 && d <= 1) {
+      if (m.cd-- <= 0) {
+        m.cd = 2; const mt = MONS[m.type];
+        const blocked = Math.random() < clamp(P.shield * .012, .05, .6);
+        if (blocked) { skillUp("shield"); continue; }
+        const dmg = Math.max(0, Math.floor(mt.atk * (.5 + Math.random()) - P.lvl * .15));
+        P.hp -= dmg; if (P.hp <= 0) { playerDies(mt.name); return; }
+      }
+      continue;
+    }
+    if (P.dead === 0 && d <= 4 && huntAt(P.x, P.y)?.id === m.hunt) {
+      const pp = path(m.x, m.y, P.x, P.y); if (pp && pp.length > 1) { m.x = pp[0].x; m.y = pp[0].y; }
+      continue;
+    }
+    if (Math.random() < .25) { const h = HUNTS.find(x => x.id === m.hunt); const nx = m.x + rr(-1, 1), ny = m.y + rr(-1, 1); if (walk(nx, ny) && inRect(h.rect, nx, ny)) { m.x = nx; m.y = ny; } }
+  }
+}
+
+// ---------- tick dos bots ----------
+function botTick() {
+  const t = now();
+  for (const b of S.bots) {
+    if (b.immune > 0) b.immune--;
+    if (b.busy > 0) {
+      b.busy--;
+      // mata monstros da hunt: divide o spawn com o jogador
+      if (Math.random() < .12) {
+        const h = HUNTS.find(x => x.id === b.hunt);
+        const alive = S.mons.filter(m => m.alive && m.hunt === b.hunt);
+        if (alive.length) { const m = alive[rr(0, alive.length - 1)]; if (m !== P.target) { m.alive = false; m.respawnAt = t + h.respawn; b.x = m.x; b.y = m.y; } }
+      } else if (Math.random() < .3) { const h = HUNTS.find(x => x.id === b.hunt); const nx = b.x + rr(-1, 1), ny = b.y + rr(-1, 1); if (walk(nx, ny) && inRect(h.rect, nx, ny)) { b.x = nx; b.y = ny; } }
+      // tenta tomar a hunt do jogador
+      if (P.lastHunt === b.hunt && P.dead === 0 && b.immune === 0 && Math.random() < .004 && b.king !== P.king) botTakesHunt(b);
+      if (b.busy === 0) { b.hunt = null; b.next = t + rr(10000, 40000); b.path = path(b.x, b.y, DEPOT.x + 2, DEPOT.y + 3) || []; }
+      continue;
+    }
+    if (b.path.length) { stepAlong(b); if (!b.path.length && b.goal) { b.hunt = b.goal.id; b.goal = null; b.busy = rr(90, 300) * (1000 / TICK) | 0; if (P.lastHunt === b.hunt) { log(`${b.name} (${KING[b.king].name}) entrou na sua hunt.`); toast(`${b.name} entrou na sua hunt`, true); } } continue; }
+    if (t >= b.next) {
+      const fit = HUNTS.filter(h => Math.abs(MONS[h.mon].lvl - b.lvl) <= 12);
+      const h = (fit.length ? fit : HUNTS)[rr(0, (fit.length ? fit : HUNTS).length - 1)];
+      const pos = freeTile(h.rect); b.goal = h; b.path = path(b.x, b.y, pos.x, pos.y) || []; if (!b.path.length) b.next = t + 5000;
+    }
+  }
+}
+
+// ---------- off-line ----------
+function offlineReport(ms) {
+  const hours = Math.min(12, ms / 3600000);
+  if (hours < 1 / 60 || !P.route.length) return null;
+  const h = huntAt(P.route[0].x, P.route[0].y) || HUNTS[0];
+  const m = MONS[h.mon];
+  const share = 1 / (1 + S.bots.filter(b => Math.abs(MONS[h.mon].lvl - b.lvl) <= 12).length * .35);
+  const kills = Math.floor(h.spawns * 3600 / ((h.respawn + 6000) / 1000) * hours * share);
+  const exp = kills * m.exp, gold = Math.floor(kills * (m.gold[0] + m.gold[1]) / 2);
+  const drops = Math.floor(kills * (m.drop ? m.drop.chance : 0));
+  const danger = clamp((m.lvl - P.lvl) * .08 + .02, .01, .5);
+  const deaths = Math.floor(hours * danger * 2 + (Math.random() < hours * danger ? 1 : 0));
+  const taken = Math.random() < hours * .25 ? 1 : 0;
+  const before = P.lvl;
+  gainExp(exp); P.gold += gold;
+  for (let i = 0; i < deaths; i++) { const l = Math.floor(P.exp * (P.bless ? .01 : .05)); P.exp -= l; P.bless = false; }
+  while (P.lvl > 1 && P.exp < expFor(P.lvl)) P.lvl--;
+  if (m.drop) for (let i = 0; i < Math.min(drops, BAG_CAP); i++) P.bag.push({ name: m.drop.name, value: m.drop.value });
+  if (taken) { S.stats.lost++; P.x = DEPOT.x + 1; P.y = DEPOT.y + 1; P.path = []; }
+  S.stats.deaths += deaths; S.stats.exp += exp; S.stats.gold += gold; S.stats.drops += drops;
+  P.hp = hpMax();
+  return { hours, kills, exp, gold, drops, deaths, taken, levels: P.lvl - before, hunt: h.name };
+}
+function showReport(r) {
+  const g = document.getElementById("repGrid"), n = document.getElementById("repNotes");
+  document.getElementById("repSub").textContent = `${r.hours < 1 ? Math.round(r.hours * 60) + " min" : r.hours.toFixed(1) + " h"} fora, caçando em ${r.hunt}`;
+  g.innerHTML = [["Exp", "+" + fmt(r.exp)], ["Levels", (r.levels >= 0 ? "+" : "") + r.levels], ["Gold", "+" + fmt(r.gold)], ["Drops raros", r.drops], ["Mortes", r.deaths], ["Hunt tomada", r.taken ? "sim" : "não"]]
+    .map(([a, b]) => `<div><b>${b}</b><small>${a}</small></div>`).join("");
+  n.textContent = r.taken ? "Um rival te expulsou enquanto você estava fora. Você está na capital; a rota continua ao fechar." : (r.deaths ? "Morreu pra monstro. Compre bênção pra perder só 1%." : "Sem incidentes. Rota rodou limpa.");
+  document.getElementById("report").hidden = false;
+}
+
+// ---------- render ----------
+const cv = document.getElementById("view"), cx = cv.getContext("2d");
+const VW = cv.width, VH = cv.height;
+const base = document.createElement("canvas"); base.width = MW * T; base.height = MH * T;
+function drawBase() {
+  const b = base.getContext("2d");
+  for (let y = 0; y < MH; y++) for (let x = 0; x < MW; x++) {
+    const t = at(x, y), px = x * T, py = y * T;
+    const g = ((x * 7 + y * 13) % 5);
+    b.fillStyle = t === 2 ? "#1f4e8a" : t === 4 || t === 5 ? "#4a4f5c" : t === 1 ? "#6b5436" : ["#2f6b2f", "#2a632b", "#337233", "#2c662e", "#306d31"][g];
+    b.fillRect(px, py, T, T);
+    if (t === 0 && g === 1) { b.fillStyle = "#3f8a3a"; b.fillRect(px + 8, py + 10, 3, 6); b.fillRect(px + 20, py + 18, 3, 6); }
+    if (t === 1) { b.fillStyle = "#7d6342"; b.fillRect(px + 4, py + 6, 6, 3); b.fillRect(px + 18, py + 20, 8, 3); }
+    if (t === 2) { b.fillStyle = "#2f68a8"; b.fillRect(px + 4 + g * 3, py + 10, 10, 2); b.fillRect(px + 14, py + 22, 10, 2); }
+    if (t === 4 || t === 5) { b.strokeStyle = "#3b3f4a"; b.strokeRect(px + .5, py + .5, T - 1, T - 1); }
+    if (t === 3) { b.fillStyle = "#2f6b2f"; b.fillRect(px, py, T, T); b.fillStyle = "#5a3a1e"; b.fillRect(px + 13, py + 18, 6, 12); b.fillStyle = "#1f5a22"; b.beginPath(); b.arc(px + 16, py + 13, 11, 0, 7); b.fill(); b.fillStyle = "#2c7a30"; b.beginPath(); b.arc(px + 13, py + 10, 7, 0, 7); b.fill(); }
+    if (t === 5) { b.fillStyle = "#c9a04a"; b.fillRect(px + 6, py + 8, 20, 16); b.fillStyle = "#8a6a2a"; b.fillRect(px + 6, py + 14, 20, 3); }
+  }
+  // bordas das hunts e da capital
+  b.lineWidth = 2;
+  for (const h of HUNTS) { b.strokeStyle = "rgba(255,255,255,.18)"; b.setLineDash([6, 6]); b.strokeRect(h.rect.x * T + 1, h.rect.y * T + 1, h.rect.w * T - 2, h.rect.h * T - 2); }
+  b.setLineDash([]); b.strokeStyle = "rgba(110,168,255,.5)"; b.strokeRect(CAPITAL.x * T + 1, CAPITAL.y * T + 1, CAPITAL.w * T - 2, CAPITAL.h * T - 2);
+}
+drawBase();
+
+function sprite(c, x, y, kind, color, name, hpFrac) {
+  const px = x * T, py = y * T;
+  if (kind === "rato") { c.fillStyle = color; c.fillRect(px + 8, py + 14, 14, 10); c.fillRect(px + 20, py + 12, 6, 6); c.fillStyle = "#d8a0a0"; c.fillRect(px + 2, py + 20, 7, 2); c.fillStyle = "#111"; c.fillRect(px + 23, py + 14, 2, 2); }
+  else if (kind === "javali") { c.fillStyle = color; c.fillRect(px + 5, py + 12, 20, 12); c.fillRect(px + 22, py + 10, 8, 10); c.fillStyle = "#eee"; c.fillRect(px + 28, py + 17, 3, 4); c.fillStyle = "#3a2414"; c.fillRect(px + 7, py + 24, 4, 5); c.fillRect(px + 19, py + 24, 4, 5); }
+  else if (kind === "bandido") { c.fillStyle = color; c.fillRect(px + 10, py + 12, 12, 14); c.fillStyle = "#e0b48c"; c.fillRect(px + 11, py + 5, 10, 8); c.fillStyle = "#222"; c.fillRect(px + 8, py + 3, 16, 4); c.fillStyle = "#999"; c.fillRect(px + 23, py + 10, 3, 14); }
+  else { // humano
+    c.fillStyle = "#e9c29c"; c.fillRect(px + 11, py + 4, 10, 9);
+    c.fillStyle = "#3a2a1a"; c.fillRect(px + 10, py + 2, 12, 4);
+    c.fillStyle = color; c.fillRect(px + 9, py + 13, 14, 12);
+    c.fillStyle = "#2b2b33"; c.fillRect(px + 10, py + 25, 5, 6); c.fillRect(px + 17, py + 25, 5, 6);
+    c.fillStyle = "#cfd6e0"; c.fillRect(px + 24, py + 9, 3, 14); c.fillStyle = "#8a6a2a"; c.fillRect(px + 23, py + 22, 5, 3);
+    if (kind === "player") { c.fillStyle = "#7a5a2a"; c.fillRect(px + 3, py + 12, 7, 11); c.fillStyle = "#b08a3a"; c.fillRect(px + 5, py + 15, 3, 5); }
+  }
+  if (name) { c.font = "700 10px Nunito, sans-serif"; c.textAlign = "center"; c.fillStyle = "rgba(0,0,0,.6)"; c.fillText(name, px + 17, py - 3); c.fillStyle = color === "#9aa0a6" || color === "#8a5a3c" || color === "#3b3f55" ? "#fff" : color; c.fillText(name, px + 16, py - 4); }
+  if (hpFrac !== undefined && hpFrac < 1) { c.fillStyle = "#300"; c.fillRect(px + 6, py + 30, 20, 3); c.fillStyle = "#e33"; c.fillRect(px + 6, py + 30, 20 * hpFrac, 3); }
+}
+
+let cam = { x: 0, y: 0 };
+function render() {
+  // câmera segue o jogador
+  const tx = clamp(P.x * T + T / 2 - VW / 2, 0, MW * T - VW), ty = clamp(P.y * T + T / 2 - VH / 2, 0, MH * T - VH);
+  cam.x += (tx - cam.x) * .15; cam.y += (ty - cam.y) * .15;
+  cx.imageSmoothingEnabled = false;
+  cx.drawImage(base, cam.x, cam.y, VW, VH, 0, 0, VW, VH);
+  cx.save(); cx.translate(-cam.x, -cam.y);
+  // rota
+  if (P.route.length) {
+    cx.strokeStyle = "rgba(93,242,194,.55)"; cx.lineWidth = 2; cx.setLineDash([4, 6]); cx.beginPath();
+    P.route.forEach((w, i) => { const x = w.x * T + T / 2, y = w.y * T + T / 2; i ? cx.lineTo(x, y) : cx.moveTo(x, y); });
+    if (P.route.length > 1) cx.lineTo(P.route[0].x * T + T / 2, P.route[0].y * T + T / 2);
+    cx.stroke(); cx.setLineDash([]);
+    P.route.forEach((w, i) => { cx.fillStyle = i === P.wp ? "#5df2c2" : "rgba(93,242,194,.7)"; cx.beginPath(); cx.arc(w.x * T + T / 2, w.y * T + T / 2, 8, 0, 7); cx.fill(); cx.fillStyle = "#06110e"; cx.font = "900 11px Nunito"; cx.textAlign = "center"; cx.fillText(String(i + 1), w.x * T + T / 2, w.y * T + T / 2 + 4); });
+  }
+  // nomes das hunts
+  cx.font = "900 12px Nunito"; cx.textAlign = "left";
+  for (const h of HUNTS) { const o = occupantsOf(h.id).length; cx.fillStyle = "rgba(0,0,0,.55)"; cx.fillRect(h.rect.x * T + 4, h.rect.y * T + 4, 190, 18); cx.fillStyle = o >= 3 ? "#ff8a8a" : o === 2 ? "#ffd27a" : "#9fe8c9"; cx.fillText(`${h.name} · ${o} ocupante${o === 1 ? "" : "s"}`, h.rect.x * T + 8, h.rect.y * T + 17); }
+  cx.fillStyle = "rgba(0,0,0,.55)"; cx.fillRect(CAPITAL.x * T + 4, CAPITAL.y * T + 4, 120, 18); cx.fillStyle = "#9cc3ff"; cx.fillText("Capital · zona segura", CAPITAL.x * T + 8, CAPITAL.y * T + 17);
+  for (const m of S.mons) if (m.alive) sprite(cx, m.x, m.y, m.type, MONS[m.type].color, null, m.hp / MONS[m.type].hp);
+  for (const b of S.bots) sprite(cx, b.x, b.y, "bot", KING[b.king].color, b.name);
+  if (P.dead === 0 || Math.floor(S.t / 2) % 2) sprite(cx, P.x, P.y, "player", KING[P.king].color, P.name, P.hp / hpMax());
+  if (P.immune > 0) { cx.strokeStyle = "rgba(255,255,255,.6)"; cx.beginPath(); cx.arc(P.x * T + 16, P.y * T + 16, 18, 0, 7); cx.stroke(); }
+  cx.restore();
+  // minimapa de calor
+  const mw = 96, mh = 64, mx = VW - mw - 8, my = 8;
+  cx.fillStyle = "rgba(0,0,0,.6)"; cx.fillRect(mx - 2, my - 2, mw + 4, mh + 4);
+  cx.drawImage(base, 0, 0, MW * T, MH * T, mx, my, mw, mh);
+  for (const h of HUNTS) { const o = occupantsOf(h.id).length; cx.fillStyle = o >= 3 ? "rgba(255,80,80,.55)" : o === 2 ? "rgba(255,200,80,.5)" : "rgba(93,242,194,.35)"; cx.fillRect(mx + h.rect.x * 2, my + h.rect.y * 2, h.rect.w * 2, h.rect.h * 2); }
+  cx.fillStyle = "#fff"; cx.fillRect(mx + P.x * 2 - 1, my + P.y * 2 - 1, 3, 3);
+  cx.strokeStyle = "rgba(255,255,255,.5)"; cx.strokeRect(mx + cam.x / T * 2, my + cam.y / T * 2, VW / T * 2, VH / T * 2);
+  if (S.routeMode) { cx.fillStyle = "rgba(93,242,194,.9)"; cx.font = "900 13px Nunito"; cx.textAlign = "left"; cx.fillText("Modo rota: toque nos tiles (até 8). Toque em Desenhar rota de novo pra começar.", 10, VH - 10); }
+}
+
+// ---------- UI ----------
+const $ = id => document.getElementById(id);
+function renderFeed() {
+  $("feed").innerHTML = S.feed.map(f => `<li><span>${f.t}</span>${f.kind === "bad" ? '<span class="tag" style="color:var(--red)">!</span> ' : f.kind === "good" ? '<span class="tag" style="color:var(--mint)">+</span> ' : ""}${f.msg}</li>`).join("");
+}
+function renderUI() {
+  $("lvl").textContent = P.lvl;
+  const a = expFor(P.lvl), b = expFor(P.lvl + 1);
+  $("expbar").style.width = clamp((P.exp - a) / (b - a) * 100, 0, 100) + "%";
+  $("hp").textContent = `${Math.floor(P.hp)} / ${hpMax()}`; $("hpbar").style.width = clamp(P.hp / hpMax() * 100, 0, 100) + "%";
+  $("skSword").textContent = P.sword; $("skShield").textContent = P.shield;
+  $("gold").textContent = fmt(P.gold); $("pots").textContent = P.pots; $("bag").textContent = `${P.bag.length} / ${BAG_CAP}`; $("bless").textContent = P.bless ? "sim" : "não";
+  const h = P.lastHunt ? HUNTS.find(x => x.id === P.lastHunt) : null;
+  const occ = h ? occupantsOf(h.id) : [];
+  $("huntName").textContent = h ? h.name : (P.task === "deposit" ? "Indo depositar" : "Fora de hunt");
+  $("huntProfit").textContent = h ? fmt(huntProfitPerHour(h) / Math.max(1, occ.length)) : "0";
+  $("share").textContent = h ? Math.round(100 / Math.max(1, occ.length)) + "%" : "100%";
+  $("occupants").innerHTML = h ? occ.map(o => o === P ? `<div class="occ"><i class="dot" style="background:${KING.grey.color}"></i><span class="name">${P.name} (você)</span></div>` :
+    `<div class="occ"><i class="dot" style="background:${KING[o.king].color}"></i><span class="name">${o.name} · lv ${o.lvl}</span><button data-bot="${o.name}" ${o.immune > 0 ? "disabled" : ""}>Desafiar</button></div>`).join("") || "" : `<div style="color:var(--muted);font-size:12.5px">Desenhe uma rota que passe por uma hunt.</div>`;
+  $("sExp").textContent = fmt(S.stats.exp); $("sDeaths").textContent = S.stats.deaths; $("sTaken").textContent = S.stats.taken; $("sLost").textContent = S.stats.lost;
+  $("btnBless").disabled = P.bless || P.gold < BLESS_COST || !inRect(CAPITAL, P.x, P.y);
+  $("btnBless").title = inRect(CAPITAL, P.x, P.y) ? "" : "Só na capital";
+}
+$("occupants").addEventListener("click", e => { const b = e.target.closest("button[data-bot]"); if (!b) return; const bot = S.bots.find(x => x.name === b.dataset.bot); if (bot) playerChallenges(bot); });
+$("btnRoute").addEventListener("click", () => { S.routeMode = !S.routeMode; $("btnRoute").textContent = S.routeMode ? "Começar a caçar" : "Desenhar rota"; if (S.routeMode) { P.route = []; P.wp = 0; P.path = []; } else if (!P.route.length) toast("Rota vazia. Marque ao menos 1 ponto.", true); else { P.wp = 0; P.path = []; log(`Rota com ${P.route.length} pontos salva.`); } });
+$("btnClear").addEventListener("click", () => { P.route = []; P.wp = 0; P.path = []; P.target = null; toast("Rota limpa"); });
+$("btnDeposit").addEventListener("click", () => { P.task = "deposit"; P.path = []; P.target = null; toast("Voltando pro depósito"); });
+$("btnBless").addEventListener("click", () => { if (P.gold >= BLESS_COST && !P.bless) { P.gold -= BLESS_COST; P.bless = true; log("Bênção comprada: morte perde 1% em vez de 5%.", "good"); renderUI(); } });
+$("btnSpeed").addEventListener("click", () => { S.speed = S.speed === 1 ? 4 : 1; $("btnSpeed").textContent = `Velocidade x${S.speed}`; });
+$("repClose").addEventListener("click", () => { $("report").hidden = true; });
+
+function canvasTile(ev) {
+  const r = cv.getBoundingClientRect(); const sx = VW / r.width, sy = VH / r.height;
+  const x = Math.floor(((ev.clientX - r.left) * sx + cam.x) / T), y = Math.floor(((ev.clientY - r.top) * sy + cam.y) / T);
+  return { x, y };
+}
+cv.addEventListener("pointerdown", ev => {
+  const { x, y } = canvasTile(ev);
+  if (S.routeMode) {
+    if (!walk(x, y)) { toast("Esse tile não dá pra andar", true); return; }
+    if (P.route.length >= 8) { toast("Máximo de 8 pontos", true); return; }
+    P.route.push({ x, y }); return;
+  }
+  const h = huntAt(x, y);
+  if (h) { const m = MONS[h.mon]; const o = occupantsOf(h.id).length; toast(`${h.name}: ${m.name} lv ${m.lvl}, ${fmt(huntProfitPerHour(h))} gold/h cheia, ${o} ocupante${o === 1 ? "" : "s"}`); }
+  else if (inRect(CAPITAL, x, y)) toast("Capital: depósito, poções, bênção. Ninguém te ataca aqui.");
+});
+
+// ---------- save ----------
+function save() {
+  const d = { p: { ...P, path: [], target: null }, stats: S.stats, feed: S.feed.slice(0, 20), lastSeen: now() };
+  try { localStorage.setItem(SAVE_KEY, JSON.stringify(d)); } catch (e) { }
+}
+function load() {
+  try {
+    const d = JSON.parse(localStorage.getItem(SAVE_KEY) || "null"); if (!d) return 0;
+    Object.assign(P, d.p, { path: [], target: null, dead: 0, immune: 0 });
+    Object.assign(S.stats, d.stats); S.feed = d.feed || []; return now() - (d.lastSeen || now());
+  } catch (e) { return 0; }
+}
+
+// ---------- loop ----------
+let acc = 0, last = performance.now();
+function frame(t) {
+  const dt = Math.min(200, t - last); last = t; acc += dt * S.speed;
+  let n = 0;
+  while (acc >= TICK && n++ < 8) { acc -= TICK; S.t++; playerTick(); monTick(); botTick(); if (S.t % 5 === 0) renderUI(); if (S.t % 25 === 0) save(); }
+  render(); requestAnimationFrame(frame);
+}
+
+// ---------- início ----------
+spawnAll(); makeBots();
+const away = load();
+if (!P.route.length) { P.route = [{ x: 17, y: 5 }, { x: 24, y: 5 }, { x: 24, y: 9 }, { x: 17, y: 9 }]; log("Rota inicial: Campo dos Ratos. Desenhe a sua quando quiser."); }
+const rep = away > 0 ? offlineReport(away) : null;
+if (rep) { log(`Voltou depois de ${rep.hours < 1 ? Math.round(rep.hours * 60) + " min" : rep.hours.toFixed(1) + " h"}: +${fmt(rep.exp)} exp, +${fmt(rep.gold)} gold.`); showReport(rep); }
+else if (!away) log("Bem-vindo a Greyhold. Seu knight caça sozinho; você decide onde e com quem briga.");
+renderUI(); renderFeed(); requestAnimationFrame(frame);
+window.addEventListener("beforeunload", save);
+document.addEventListener("visibilitychange", () => { if (document.hidden) save(); });
+})();
+</script>
