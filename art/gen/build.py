@@ -58,10 +58,10 @@ for sheet, grid, target, names in SHEETS:
     print(sheet, "ok")
 
 # texturas: 512 -> 128 (pixel art real), espelhadas pra 256 tileável; o jogo lê blocos de 32
-for n in ["grass", "grass_dark", "dirt", "sand", "water", "cobble", "swamp", "rock"]:
+for n in ["grass", "grass_dark", "sand", "cobble", "swamp", "rock"]:   # terra e água ficam procedurais (a IA desenhou grade de azulejos)
     src = os.path.join(HERE, f"tex_{n}.png")
     if not os.path.exists(src): print("falta tex", n); continue
-    im = Image.open(src).convert("RGB").resize((128, 128), Image.LANCZOS)
+    im = Image.open(src).convert("RGB").crop((64, 64, 448, 448)).resize((128, 128), Image.LANCZOS)
     big = Image.new("RGB", (256, 256))
     big.paste(im, (0, 0)); big.paste(im.transpose(Image.FLIP_LEFT_RIGHT), (128, 0)); big.paste(im.transpose(Image.FLIP_TOP_BOTTOM), (0, 128)); big.paste(im.transpose(Image.ROTATE_180), (128, 128))
     big.save(os.path.join(TEX, n + ".png")); print("tex", n, "ok")

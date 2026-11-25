@@ -80,12 +80,12 @@ export function genMap() {
   for (let y = 1; y < MH - 1; y++) for (let x = 1; x < MW - 1; x++) {
     const t = at(x, y); if (!walk(x, y) || t === 1 || t === 4) continue;
     const h = hash(x, y), r = h % 100;
-    if (t === 0 && r < 6) props.push({ x, y, kind: ["bush", "flower_yellow", "flower_red", "bush2", "mushroom", "stump"][h % 6] });
-    if (t === 9 && r < 9) props.push({ x, y, kind: ["bush", "bush2", "mushroom", "log", "bush3"][h % 5] });
-    if (t === 10 && r < 8) props.push({ x, y, kind: ["reed", "lily", "cattail", "bone", "mushroom"][h % 5] });
-    if (t === 11 && r < 6) props.push({ x, y, kind: ["crate", "barrel", "skull", "bone"][h % 4] });
-    if (t === 12 && r < 5) props.push({ x, y, kind: ["skull", "bone", "dead_shrub"][h % 3] });
-    if (t === 13 && r < 5) props.push({ x, y, kind: ["log", "boulder_small"][h % 2] });
+    if (t === 0 && r < 14) props.push({ x, y, kind: ["bush", "flower_yellow", "flower_red", "bush2", "mushroom", "stump", "flower_yellow2", "bush3", "berry_bush", "log"][h % 10] });
+    if (t === 9 && r < 16) props.push({ x, y, kind: ["bush_dark", "bush_dark2", "mushroom_red", "log", "berry_bush", "mushroom"][h % 6] });
+    if (t === 10 && r < 14) props.push({ x, y, kind: ["reed", "lily", "cattail", "bone", "mushroom_red", "moss_rock", "lily2"][h % 7] });
+    if (t === 11 && r < 10) props.push({ x, y, kind: ["crate", "barrel", "skull", "bone", "moss_rock2", "wheel"][h % 6] });
+    if (t === 12 && r < 9) props.push({ x, y, kind: ["skull", "bone", "dead_shrub", "bone_pile", "wheel"][h % 5] });
+    if (t === 13 && r < 8) props.push({ x, y, kind: ["log", "reed", "hay"][h % 3] });
   }
   // garante chão nas hunts e portas
   for (const h of HUNTS) { set(h.door[0], h.door[1], 1); set(h.door[0] - 1, h.door[1], 1); for (let y = h.rect.y; y < h.rect.y + h.rect.h; y++) for (let x = h.rect.x; x < h.rect.x + h.rect.w; x++) { const t = at(x, y); if (t === 3 || t === 8 || t === 2) set(x, y, h.region === "campos" ? 0 : h.region === "floresta" ? 9 : h.region === "pantano" ? 10 : h.region === "minas" ? 11 : 12); } }

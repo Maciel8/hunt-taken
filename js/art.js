@@ -21,8 +21,14 @@ export const base = document.createElement("canvas"); base.width = MW * T; base.
 export const over = document.createElement("canvas"); over.width = MW * T; over.height = MH * T;
 export const mini = document.createElement("canvas"); mini.width = MW * 2; mini.height = MH * 2;
 
+const C2 = { dirt1: "#8c6b45", dirt2: "#7b5b3a", dirt3: "#9e7d55", dirt4: "#644727", wat1: "#1c4b86", wat2: "#2a66ad", wat3: "#5f93cf", wat4: "#143868" };
+function noise(g, px, py, x, y, cols, n, salt) { for (let i = 0; i < n; i++) { const h = hash(x * 131 + i * 17 + salt, y * 71 + i * 29 + salt * 3); g.fillStyle = cols[(h >>> 21) % cols.length]; g.fillRect(px + ((h >>> 3) % 32), py + ((h >>> 11) % 32), 1 + ((h >>> 19) & 1), 1); } }
+function procDirt(g, px, py, x, y) { rect(g, px, py, 32, 32, C2.dirt1); noise(g, px, py, x, y, [C2.dirt2, C2.dirt3, C2.dirt4, C2.dirt2], 30, 2); const h = hash(x, y); if (h % 3 === 0) { const ox = 5 + (h >> 4) % 18, oy = 6 + (h >> 8) % 16; rect(g, px + ox, py + oy, 5, 3, C2.dirt4); rect(g, px + ox + 1, py + oy, 3, 1, C2.dirt3); rect(g, px + ox + 8, py + oy + 5, 3, 2, C2.dirt4); } }
+function procWater(g, px, py, x, y) { rect(g, px, py, 32, 32, C2.wat1); noise(g, px, py, x, y, [C2.wat4, C2.wat2, C2.wat4], 14, 3); const h = hash(x, y); rect(g, px + 3 + h % 14, py + 7 + (h >> 5) % 14, 9, 1, C2.wat2); rect(g, px + 10 + (h >> 3) % 12, py + 18 + (h >> 8) % 9, 6, 1, C2.wat3); rect(g, px + 5 + (h >> 6) % 10, py + 24 + (h >> 11) % 5, 4, 1, C2.wat2); }
 function drawTex(g, name, px, py, x, y) {
   const im = A.tex[name];
+  if (!im && name === "dirt") return procDirt(g, px, py, x, y);
+  if (!im && name === "water") return procWater(g, px, py, x, y);
   if (!im) { rect(g, px, py, T, T, FALL[name] || "#555"); const h = hash(x, y); for (let i = 0; i < 10; i++) { const k = hash(x * 7 + i, y * 13 + i); g.fillStyle = "rgba(0,0,0,.12)"; g.fillRect(px + (k % 32), py + ((k >> 6) % 32), 2, 1); } return; }
   const n = Math.floor(im.width / T) || 1; const sx = (x % n) * T, sy = (y % n) * T;
   g.drawImage(im, sx, sy, T, T, px, py, T, T);
@@ -66,7 +72,7 @@ export function drawOver() {
     const t = at(x, y), px = x * T, py = y * T, h = hash(x, y);
     if (t === 3) { const gnd = groundOf(x, y); const name = gnd === "grass_dark" ? (h % 4 === 0 ? "willow" : "pine") : gnd === "swamp" ? (h % 2 ? "willow" : "dead") : gnd === "rock" || gnd === "cobble" ? "dead" : (h % 5 === 0 ? "pine" : "oak"); if (!blit(g, name, px + 16, py + 30, 1)) drawTreeFallback(g, x, y); }
     if (t === 8) { if (!blit(g, "boulder", px + 16, py + 30, 1)) { disc(g, px + 16, py + 19, 12, C.stone2); disc(g, px + 14, py + 17, 10, C.stone); } }
-    if (t === 7) { if (!blit(g, "fence", px + 16, py + 30, 1)) { rect(g, px, py + 11, 32, 4, C.wood2); rect(g, px, py + 19, 32, 4, C.wood2); rect(g, px + 4, py + 5, 5, 24, C.wood2); rect(g, px + 20, py + 5, 5, 24, C.wood2); } }
+    if (t === 7) { const vert = at(x, y - 1) === 7 || at(x, y + 1) === 7; if (vert && A.sp.fence) { const im = A.sp.fence; g.save(); g.translate(px + 16, py + 16); g.rotate(Math.PI / 2); g.drawImage(im, -im.width / 2, -im.height / 2); g.restore(); } else if (!blit(g, "fence", px + 16, py + 30, 1)) { rect(g, px, py + 11, 32, 4, C.wood2); rect(g, px, py + 19, 32, 4, C.wood2); rect(g, px + 4, py + 5, 5, 24, C.wood2); rect(g, px + 20, py + 5, 5, 24, C.wood2); } }
   }
   // casas (3x3 tiles) e barraca
   for (const [hx, hy, nm] of [[3, 2, "house"], [8, 2, "house2"]]) { if (!blit(g, nm, hx * T + 48, hy * T + 96, 1)) { rect(g, hx * T, hy * T + 44, 96, 52, "#8b877d"); rect(g, hx * T - 8, hy * T - 12, 108, 58, "#8d3f2f"); } }
