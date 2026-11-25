@@ -6,15 +6,15 @@ import { base, over, mini, drawUnit, drawMon } from "./art.js";
 
 export const cv = document.getElementById("view"), cx = cv.getContext("2d");
 let VW = cv.width, VH = cv.height;
-export const cam = { x: 0, y: 0 };
+export const cam = { x: 0, y: 0, follow: true };
 export function resize() { const r = cv.parentElement.getBoundingClientRect(); cv.width = Math.max(640, Math.floor(r.width)); cv.height = Math.floor(cv.width * 0.62); VW = cv.width; VH = cv.height; }
 const sx = v => v - cam.x, sy = v => v - cam.y;
 function label(text, x, y, color, size = 11) { cx.font = `800 ${size}px Nunito, sans-serif`; cx.textAlign = "center"; const w = cx.measureText(text).width + 10; cx.fillStyle = "rgba(14,10,18,.78)"; cx.fillRect(Math.round(x - w / 2), Math.round(y - size - 2), Math.round(w), size + 6); cx.fillStyle = color; cx.fillText(text, Math.round(x), Math.round(y)); }
 
 export function render() {
   const P = S.p;
-  const tx = Math.max(0, Math.min(P.x * T + T / 2 - VW / 2, MW * T - VW)), ty = Math.max(0, Math.min(P.y * T + T / 2 - VH / 2, MH * T - VH));
-  cam.x += (tx - cam.x) * .15; cam.y += (ty - cam.y) * .15;
+  if (cam.follow) { const tx = P.x * T + T / 2 - VW / 2, ty = P.y * T + T / 2 - VH / 2; cam.x += (tx - cam.x) * .15; cam.y += (ty - cam.y) * .15; }
+  cam.x = Math.max(0, Math.min(cam.x, MW * T - VW)); cam.y = Math.max(0, Math.min(cam.y, MH * T - VH));
   const cxr = Math.round(cam.x), cyr = Math.round(cam.y); cam.x = cxr; cam.y = cyr;
   cx.imageSmoothingEnabled = false; cx.setTransform(1, 0, 0, 1, 0, 0);
   cx.drawImage(base, cxr, cyr, VW, VH, 0, 0, VW, VH);
@@ -27,13 +27,9 @@ export function render() {
   if (P.immune > 0) { cx.strokeStyle = "rgba(255,255,255,.7)"; cx.lineWidth = 1; cx.strokeRect(P.x * T + 3.5, P.y * T + 1.5, 25, 29); }
   cx.drawImage(over, cxr, cyr, VW, VH, cxr, cyr, VW, VH);
   cx.restore();
-  // rota
-  if (P.route.length) {
-    cx.strokeStyle = "rgba(255,246,232,.85)"; cx.lineWidth = 2; cx.setLineDash([3, 5]); cx.beginPath();
-    P.route.forEach((w, i) => { const x = sx(w.x * T + 16), y = sy(w.y * T + 16); i ? cx.lineTo(x, y) : cx.moveTo(x, y); });
-    if (P.route.length > 1) cx.lineTo(sx(P.route[0].x * T + 16), sy(P.route[0].y * T + 16)); cx.stroke(); cx.setLineDash([]);
-    P.route.forEach((w, i) => { const x = sx(w.x * T + 16), y = sy(w.y * T + 16); cx.fillStyle = "#15120f"; cx.beginPath(); cx.arc(x, y, 9, 0, 7); cx.fill(); cx.fillStyle = i === P.wp ? "#5df2c2" : "#fff6e8"; cx.beginPath(); cx.arc(x, y, 7, 0, 7); cx.fill(); cx.fillStyle = "#15120f"; cx.font = "900 10px Nunito"; cx.textAlign = "center"; cx.fillText(String(i + 1), x, y + 3.5); });
-  }
+  // hunt escolhida: borda tracejada
+  const hh = P.huntId && HUNTS.find(x => x.id === P.huntId);
+  if (hh) { cx.strokeStyle = "rgba(93,242,194,.7)"; cx.lineWidth = 2; cx.setLineDash([6, 6]); cx.strokeRect(sx(hh.rect.x * T) + 1, sy(hh.rect.y * T) + 1, hh.rect.w * T - 2, hh.rect.h * T - 2); cx.setLineDash([]); }
   for (const b of S.bots) label(`${b.name} · ${b.lvl}`, sx(b.x * T + 16), sy(b.y * T) - 2, KING[b.king].color);
   label(`${P.name} · ${P.lvl}`, sx(P.x * T + 16), sy(P.y * T) - 2, KING[P.king].color);
   for (const m of S.mons) if (m.alive && (m.hp < MONS[m.type].hp || m.boss)) { const x = sx(m.x * T + 4), y = sy(m.y * T + 30); cx.fillStyle = "#15120f"; cx.fillRect(x - 1, y - 1, 26, 5); cx.fillStyle = m.boss ? "#ffcf5a" : "#e33"; cx.fillRect(x, y, 24 * m.hp / MONS[m.type].hp, 3); if (m.boss) label(MONS[m.type].name, sx(m.x * T + 16), sy(m.y * T) - 18, "#ffcf5a"); }
@@ -49,6 +45,7 @@ export function render() {
   // log de combate
   cx.font = "700 11px Nunito"; cx.textAlign = "left";
   S.clog.slice(0, 4).forEach((l, i) => { const y = VH - 12 - i * 18; const w = cx.measureText(l.msg).width + 12; cx.fillStyle = "rgba(14,10,18,.7)"; cx.fillRect(8, y - 12, w, 16); cx.fillStyle = l.kind === "kill" ? "#ffe6a8" : "#cfd6e0"; cx.fillText(l.msg, 14, y); });
-  if (S.routeMode) { cx.fillStyle = "rgba(14,10,18,.85)"; cx.fillRect(0, 0, VW, 26); cx.fillStyle = "#5df2c2"; cx.font = "900 13px Nunito"; cx.textAlign = "left"; cx.fillText("Modo rota: toque nos tiles (até 8). Toque em Começar a caçar quando terminar.", 10, 17); }
 }
+export function miniHit(ev) { const r = cv.getBoundingClientRect(); const kx = cv.width / r.width, ky = cv.height / r.height; const x = (ev.clientX - r.left) * kx, y = (ev.clientY - r.top) * ky; const mx = VW - mini.width - 8, my = 8; if (x >= mx && x <= mx + mini.width && y >= my && y <= my + mini.height) return { x: (x - mx) / 2 * T, y: (y - my) / 2 * T }; return null; }
+export function viewSize() { return { VW, VH }; }
 export function tileAt(ev) { const r = cv.getBoundingClientRect(); const kx = cv.width / r.width, ky = cv.height / r.height; return { x: Math.floor(((ev.clientX - r.left) * kx + cam.x) / T), y: Math.floor(((ev.clientY - r.top) * ky + cam.y) / T) }; }

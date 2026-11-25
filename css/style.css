@@ -49,3 +49,6 @@ label.auto input[type=text]{background:var(--panel2);border:1px solid var(--line
 .picks{display:grid;grid-template-columns:1fr 1fr;gap:6px;margin-bottom:8px}.pick{background:var(--panel2);border:2px solid var(--line);border-radius:10px;padding:8px;cursor:pointer;display:grid;gap:2px}.pick:has(input:checked){border-color:var(--mint)}.pick input{display:none}.pick small{color:var(--muted);font-size:11px}
 .modal label.auto select,.modal label.auto input[type=range]{margin-left:auto}
 .modal label{display:flex;align-items:center;gap:8px;padding:4px 0;font-size:12.5px}.modal select{background:var(--panel2);color:var(--fg);border:1px solid var(--line);border-radius:6px;padding:4px}
+
+.huntpop{position:absolute;width:220px;background:var(--panel);border:2px solid var(--edge);border-radius:10px;padding:8px 10px;z-index:5;box-shadow:0 6px 0 #0a0b12;font-size:12.5px}.huntpop .ph{display:flex;justify-content:space-between;align-items:center;margin-bottom:4px}.huntpop .row{padding:1px 0}
+canvas#view{cursor:grab}canvas#view:active{cursor:grabbing}

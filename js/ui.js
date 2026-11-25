@@ -1,7 +1,8 @@
 // Interface: colunas, abas/modais, painéis. Só lê o estado e chama funções da simulação.
 import { KING, VOC, MONS, ITEMS, RARITY, HUNTS, REGIONS, CAPITAL, ECON, WAR, TIERS, expFor, skillNext } from "./data.js";
 import { huntAt, inRect, path } from "./world.js";
-import { S, P, fmt, hhmm, now, hpMax, manaMax, atkOf, defOf, power, expMult, lootMult, dominant, medianBotLvl, huntInfo, occupantsOf, playerChallenges, equipItem, unequip, itemName, itemValue, canEquip, buyListing, listItem, buyShop, sellToNpc, buyBless, arenaFight, tierOf, donateWar, simulateWar, kingdomPower, save, resetSave, log, emit } from "./sim.js";
+import { S, P, fmt, hhmm, now, hpMax, manaMax, atkOf, defOf, power, expMult, lootMult, dominant, medianBotLvl, huntInfo, occupantsOf, playerChallenges, equipItem, unequip, itemName, itemValue, canEquip, buyListing, listItem, buyShop, sellToNpc, buyBless, arenaFight, tierOf, donateWar, simulateWar, kingdomPower, save, resetSave, log, emit, goHunt, goHome } from "./sim.js";
+import { cam } from "./render.js";
 import { A } from "./art.js";
 
 const $ = id => document.getElementById(id);
@@ -35,8 +36,9 @@ function renderField() {
   $("atk").textContent = Math.round(atkOf(p)); $("def").textContent = Math.round(defOf(p)); $("pow").textContent = Math.round(power(p));
   $("bag").textContent = `${p.bag.length} / ${ECON.BAG_CAP}`; $("bless").textContent = p.bless ? "sim" : "não";
   $("btnBless").disabled = p.bless || p.gold < ECON.BLESS_COST || !inRect(CAPITAL, p.x, p.y);
-  $("task").textContent = p.dead > 0 ? "morto, voltando" : p.task === "idle" ? "parado na capital" : p.task === "deposit" ? "indo depositar" : p.route.length ? "caçando na rota" : "sem rota";
-  $("btnIdle").textContent = p.task === "idle" ? "Retomar rota" : "Parar e ficar na capital";
+  const hh = p.huntId && HUNTS.find(x => x.id === p.huntId);
+  $("task").textContent = p.dead > 0 ? "morto, voltando" : p.task === "idle" ? "parado na capital" : p.task === "deposit" ? "indo depositar" : p.task === "goto" ? `indo pra ${hh ? hh.name : "hunt"}` : `caçando em ${hh ? hh.name : "hunt"}`;
+  $("btnIdle").textContent = p.task === "idle" ? (p.huntId ? "Voltar pra hunt" : "Escolher hunt") : "Voltar pra capital";
 }
 function renderEquip() {
   const p = P();
@@ -44,7 +46,7 @@ function renderEquip() {
 }
 function renderHunt() {
   const p = P(); const hh = p.lastHunt ? HUNTS.find(x => x.id === p.lastHunt) : null;
-  if (!hh) { $("huntName").textContent = p.task === "deposit" ? "Indo depositar" : "Fora de hunt"; $("huntStats").innerHTML = `<div class="muted">Escolha uma hunt no Mapa ou desenhe uma rota.</div>`; $("occupants").innerHTML = ""; return; }
+  if (!hh) { $("huntName").textContent = p.task === "deposit" ? "Indo depositar" : "Fora de hunt"; $("huntStats").innerHTML = `<div class="muted">Escolha uma hunt no Mapa ou clique numa área do mapa.</div>`; $("occupants").innerHTML = ""; return; }
   const i = huntInfo(hh, p), occ = occupantsOf(hh.id);
   $("huntName").textContent = hh.name;
   $("huntStats").innerHTML = `<div class="row"><span>Gold/h (sua parte)</span><b>${fmt(i.goldH * i.share)}</b></div><div class="row"><span>Exp/h</span><b>${fmt(i.expH * i.share)}</b></div><div class="row"><span>Líquido/h</span><b style="color:${i.netH > 0 ? "var(--mint)" : "var(--red)"}">${fmt(i.netH)}</b></div><div class="row"><span>Sua parte do spawn</span><b>${Math.round(i.share * 100)}%</b></div><div class="row"><span>Risco de morte</span><b>${Math.round(i.danger * 100)}%</b></div>`;
@@ -100,13 +102,13 @@ function showAnalyser(id) {
 }
 
 // ---------- eventos ----------
-export function bindUI(onRouteToggle) {
+export function bindUI() {
   document.querySelectorAll("[data-tab]").forEach(b => b.addEventListener("click", () => openModal(b.dataset.tab)));
   $("modalClose").addEventListener("click", closeModal); $("modal").addEventListener("click", e => { if (e.target === $("modal")) closeModal(); });
   document.addEventListener("keydown", e => { if (e.key === "Escape") closeModal(); });
   $("modalBody").addEventListener("click", e => {
     const b = e.target.closest("button"); if (!b) return; const p = P();
-    if (b.dataset.go) { const hh = HUNTS.find(x => x.id === b.dataset.go); const r = hh.rect; p.route = [{ x: r.x + 1, y: r.y + 1 }, { x: r.x + r.w - 2, y: r.y + 1 }, { x: r.x + r.w - 2, y: r.y + r.h - 2 }, { x: r.x + 1, y: r.y + r.h - 2 }]; p.wp = 0; p.path = []; p.task = "route"; p.target = null; log(`Rota nova: ${hh.name}.`); closeModal(); toast(`Indo pra ${hh.name}`); }
+    if (b.dataset.go) { goHunt(b.dataset.go); closeModal(); }
     if (b.dataset.buy) buyShop(b.dataset.buy, b.dataset.buy === "potion" ? 5 : 1); if (b.dataset.buylist) buyListing(+b.dataset.buylist); if (b.dataset.sell) sellToNpc(+b.dataset.sell); if (b.dataset.list) listItem(+b.dataset.list, Math.floor(+b.dataset.fair));
     if (b.dataset.eq) { equipItem(p, +b.dataset.eq); } if (b.dataset.uneq) { unequip(p, b.dataset.uneq); }
     if (b.dataset.fight) { const r = arenaFight(S.bots[+b.dataset.fight]); toast(r.win ? `Venceu (+${r.delta})` : `Perdeu (${r.delta})`, !r.win); }
@@ -116,14 +118,22 @@ export function bindUI(onRouteToggle) {
   $("occupants").addEventListener("click", e => { const b = e.target.closest("button[data-bot]"); if (!b) return; const bot = S.bots.find(x => x.name === b.dataset.bot); if (bot) playerChallenges(bot); });
   $("btnBless").addEventListener("click", () => { buyBless(); renderAll(); });
   $("btnDeposit").addEventListener("click", () => { const p = P(); p.task = "deposit"; p.path = []; p.target = null; toast("Voltando pro depósito"); });
-  $("btnIdle").addEventListener("click", () => { const p = P(); if (p.task === "idle") { p.task = "route"; toast("Rota retomada"); } else { p.task = "deposit"; p.path = []; p.target = null; setTimeout(() => { if (p.task === "deposit") { } }, 0); p.idleAfter = true; toast("Indo pra capital"); } renderAll(); });
-  $("btnRoute").addEventListener("click", () => onRouteToggle());
-  $("btnClear").addEventListener("click", () => { const p = P(); p.route = []; p.wp = 0; p.path = []; p.target = null; toast("Rota limpa"); });
+  $("btnIdle").addEventListener("click", () => { const p = P(); if (p.task === "idle") { if (p.huntId) goHunt(p.huntId); else openModal("map"); } else goHome(); renderAll(); });
+  $("btnCenter").addEventListener("click", () => { cam.follow = true; toast("Seguindo o personagem"); });
+  $("btnMapTab").addEventListener("click", () => openModal("map"));
+  $("huntPop").addEventListener("click", e => { const b = e.target.closest("button"); if (!b) return; if (b.dataset.go) { goHunt(b.dataset.go); hideHuntPop(); } if (b.dataset.close) hideHuntPop(); });
   $("btnSpeed").addEventListener("click", () => { S.speed = S.speed === 1 ? 4 : 1; $("btnSpeed").textContent = `x${S.speed}`; });
   $("autoPot").addEventListener("input", e => { S.auto.potionAt = +e.target.value; $("autoPotV").textContent = S.auto.potionAt + "%"; });
   $("autoReturn").addEventListener("change", e => S.auto.autoReturn = e.target.checked); $("autoDeposit").addEventListener("change", e => S.auto.autoDeposit = e.target.checked); $("autoSell").addEventListener("change", e => S.auto.sellLoot = e.target.checked); $("autoBuy").addEventListener("change", e => S.auto.potBuy = Math.max(0, Math.min(30, +e.target.value || 0)));
   $("equip").addEventListener("click", () => openModal("equip"));
 }
+
+export function showHuntPop(hh, clientX, clientY) {
+  const p = P(), i = huntInfo(hh, p), occ = occupantsOf(hh.id), el = $("huntPop"), wrap = el.parentElement.getBoundingClientRect();
+  el.innerHTML = `<div class="ph"><b>${hh.name}</b><button data-close="1" class="x">✕</button></div><div class="row"><span>${i.m.name} lv ${i.m.lvl}</span><b>${i.m.hp} hp</b></div><div class="row"><span>Gold/h ${i.occ > 1 ? "(dividido)" : ""}</span><b>${fmt(i.goldH * i.share)}</b></div><div class="row"><span>Exp/h</span><b>${fmt(i.expH * i.share)}</b></div><div class="row"><span>Líquido/h</span><b style="color:${i.netH > 0 ? "var(--mint)" : "var(--red)"}">${fmt(i.netH)}</b></div><div class="row"><span>Risco</span><b>${Math.round(i.danger * 100)}%</b></div><div class="row"><span>Ocupantes</span><b>${occ.map(o => o.name).join(", ") || "ninguém"}</b></div>${i.lvlOk ? "" : `<div class="warn">Level baixo pra cá (ideal ${Math.ceil(i.m.lvl * .6)}+)</div>`}<button data-go="${hh.id}" class="primary" style="width:100%;margin-top:6px">${p.huntId === hh.id ? "Já é sua hunt" : "Caçar aqui"}</button>`;
+  el.hidden = false; const x = Math.min(clientX - wrap.left + 8, wrap.width - 230), y = Math.min(clientY - wrap.top + 8, wrap.height - 230); el.style.left = Math.max(8, x) + "px"; el.style.top = Math.max(8, y) + "px";
+}
+export function hideHuntPop() { $("huntPop").hidden = true; }
 
 // ---------- criação de personagem e relatório ----------
 export function showCreate(onDone) {
