@@ -136,10 +136,10 @@ button:focus-visible{outline:2px solid var(--mint);outline-offset:2px}
 (() => {
 "use strict";
 // ---------- constantes ----------
-const T = 16, Z = 2, MW = 48, MH = 32;                 // tile em px lógicos, zoom, mapa em tiles
+const T = 32, Z = 1, MW = 48, MH = 32;                 // tile em px lógicos, zoom, mapa em tiles
 const TICK = 400;
 const BAG_CAP = 20, POT_HEAL = 60, POT_COST = 20, BLESS_COST = 200;
-const KING = { grey: { name: "Greyhold", color: "#6ea8ff", tunic: "#3f6fd6", dark: "#2a4a9a" }, ash: { name: "Ashvale", color: "#ff5d5d", tunic: "#d6473f", dark: "#962e28" }, thorn: { name: "Thornmere", color: "#64e08a", tunic: "#3fb866", dark: "#287a44" } };
+const KING = { grey: { name: "Greyhold", color: "#6ea8ff", tunic: "#3a62b8", dark: "#24407f", light: "#5a84d6" }, ash: { name: "Ashvale", color: "#ff5d5d", tunic: "#b53c34", dark: "#7c2621", light: "#d6625a" }, thorn: { name: "Thornmere", color: "#64e08a", tunic: "#3a9a58", dark: "#25663a", light: "#58ba78" } };
 const SAVE_KEY = "hunt-taken-proto-v2";
 
 // ---------- util ----------
@@ -291,7 +291,7 @@ function playerChallenges(b) {
 }
 
 // ---------- ticks ----------
-function stepAlong(e) { if (!e.path.length) { e.moving = 0; return false; } const n = e.path.shift(); e.face = n.x > e.x ? 1 : n.x < e.x ? -1 : e.face; e.x = n.x; e.y = n.y; e.moving = 2; return true; }
+function stepAlong(e) { if (!e.path.length) { e.moving = 0; return false; } const n = e.path.shift(); if (n.x !== e.x) { e.face = n.x > e.x ? 1 : -1; e.dir = e.face > 0 ? "right" : "left"; } else if (n.y !== e.y) e.dir = n.y > e.y ? "down" : "up"; e.x = n.x; e.y = n.y; e.moving = 2; return true; }
 function nearestMon(x, y, range) { let best = null, bd = 1e9; for (const m of S.mons) if (m.alive) { const d = Math.abs(m.x - x) + Math.abs(m.y - y); if (d <= range && d < bd) { bd = d; best = m; } } return best; }
 function playerTick() {
   if (P.moving > 0) P.moving--;
@@ -401,59 +401,265 @@ function showReport(r) {
   document.getElementById("report").hidden = false;
 }
 
-// ---------- arte (estilo Tibia: paleta terrosa, volume por sombra, sem contorno grosso; 16 px lógicos por tile) ----------
+// ---------- arte (Tibia: 32 px nativos, sprites pixel a pixel, objetos altos ancorados embaixo-direita e subindo pra cima-esquerda) ----------
 const C = {
-  ink: "#141210", gr1: "#4f8a38", gr2: "#447a30", gr3: "#5c9c44", gr4: "#386827",
-  dirt1: "#8a6a44", dirt2: "#7a5a38", dirt3: "#9c7b52", dirt4: "#654828",
-  wat1: "#1d4f8c", wat2: "#2a66ad", wat3: "#5f93cf", wat4: "#153b6b",
-  tree1: "#1e4a21", tree2: "#2d6b2c", tree3: "#468c3b", tree4: "#62aa4e", trunk: "#4e3620", trunk2: "#6b4a2c", trunk3: "#2e1f12",
-  roof: "#8f3f2f", roof2: "#6e2c20", roof3: "#ad5540", wall: "#8a867c", wall2: "#6c6962", wall3: "#a8a498", mortar: "#55534c",
-  wood: "#6b4a2c", wood2: "#4a3119", wood3: "#8a6640", stone: "#7c7c76", stone2: "#55554f", stone3: "#9d9d96",
-  cob: "#8f8a7c", cob2: "#6f6b60", cob3: "#a6a192", skin: "#d9a877", skin2: "#b8865a", pink: "#d98b9a", white: "#e8e2d2", yellow: "#e2b84a", orange: "#d97a3a", red: "#a8322a",
+  ink: "#15120f", gr1: "#4c8534", gr2: "#41752c", gr3: "#5a9a42", gr4: "#355f24", gr5: "#64a84a",
+  dirt1: "#8c6b45", dirt2: "#7b5b3a", dirt3: "#9e7d55", dirt4: "#644727",
+  wat1: "#1c4b86", wat2: "#2a66ad", wat3: "#5f93cf", wat4: "#143868",
+  tree1: "#1c4620", tree2: "#2b672b", tree3: "#44893a", tree4: "#62a84e", trunk: "#4c351f", trunk2: "#6a4a2b", trunk3: "#2b1d10",
+  roof: "#8d3f2f", roof2: "#6b2b1f", roof3: "#ad5540", wall: "#8b877d", wall2: "#6b685f", wall3: "#a9a599", mortar: "#524f48",
+  wood: "#6b4a2c", wood2: "#48301a", wood3: "#8d6843", stone: "#7d7d77", stone2: "#54544e", stone3: "#9f9f98",
+  cob: "#8f8a7c", cob2: "#6e6a5f", cob3: "#a7a293", white: "#e9e3d3", yellow: "#e2b84a", orange: "#d97a3a", red: "#a8322a", pink: "#d98b9a",
 };
 function rect(g, x, y, w, h, c) { g.fillStyle = c; g.fillRect(x, y, w, h); }
 function disc(g, cx, cy, r, c) { g.fillStyle = c; for (let dy = -r; dy <= r; dy++) { const w = Math.round(Math.sqrt(r * r - dy * dy)); g.fillRect(cx - w, cy + dy, 2 * w + 1, 1); } }
-function noise(g, px, py, x, y, cols, n, salt) { const h = hash(x * 3 + salt, y * 7 + salt); for (let i = 0; i < n; i++) { const o = (h >> (i * 4)) & 255; rect(g, px + (o % 16), py + ((o >> 4) % 16), 1, 1, cols[i % cols.length]); } }
+function noise(g, px, py, x, y, cols, n, salt, size) { let h = hash(x * 3 + salt, y * 7 + salt); for (let i = 0; i < n; i++) { h = (h * 1103515245 + 12345) >>> 0; rect(g, px + (h % size), py + ((h >> 8) % size), 1 + ((h >> 16) & 1), 1, cols[(h >> 20) % cols.length]); } }
 
+// ---- sprites como mapas de pixel ----
+const spriteCache = new Map();
+function sprite(key, rows, pal, ox, oy, mirror) {
+  const k = key + (mirror ? "|m" : "");
+  if (spriteCache.has(k)) return spriteCache.get(k);
+  const c = document.createElement("canvas"); c.width = 32; c.height = 32; const g = c.getContext("2d");
+  rows.forEach((row, j) => { for (let i = 0; i < row.length; i++) { const ch = row[i]; if (ch === "." || ch === " ") continue; const col = pal[ch]; if (!col) continue; g.fillStyle = col; g.fillRect(mirror ? 31 - (ox + i) : ox + i, oy + j, 1, 1); } });
+  spriteCache.set(k, c); return c;
+}
+const HUMAN = {
+  front: [
+    "....oooooo......",
+    "...ohhhhhho.....",
+    "..ohhhhhhhho....",
+    "..ohHhhhhhHo....",
+    "..osssssssso....",
+    "..osesssseso....",
+    "..ossssSssso....",
+    "...osssSsso.....",
+    "....ossSso......",
+    "..ooottttooo....",
+    ".otLtttttttTo...",
+    ".ottLttttttTo...",
+    "osottttttttTos..",
+    "osottttttttTos..",
+    ".o.otttttttTo.o.",
+    "....oTTTTTTo....",
+    "....ollollo.....",
+    "....ollollo.....",
+    "....ollollo.....",
+    "....ollollo.....",
+    "....obbobbo.....",
+    "...obbbobbbo....",
+    "...oooooooo.....",
+  ],
+  back: [
+    "....oooooo......",
+    "...ohhhhhho.....",
+    "..ohhhhhhhho....",
+    "..ohhhhhhhho....",
+    "..ohhhhhhhho....",
+    "..oHhhhhhhHo....",
+    "..oHHhhhhHHo....",
+    "...osHHHHso.....",
+    "....ossSso......",
+    "..ooottttooo....",
+    ".oTttttttttLo...",
+    ".oTttttttttLo...",
+    "oSoTtttttttLoso.",
+    "oSoTtttttttLoso.",
+    ".o.oTttttttLo.o.",
+    "....oTTTTTTo....",
+    "....ollollo.....",
+    "....ollollo.....",
+    "....ollollo.....",
+    "....ollollo.....",
+    "....obbobbo.....",
+    "...obbbobbbo....",
+    "...oooooooo.....",
+  ],
+  sideA: [
+    "....oooooo......",
+    "...ohhhhhho.....",
+    "..ohhhhhhho.....",
+    "..ohhhssssso....",
+    "..ohhhsssseo....",
+    "..ohhhssssso....",
+    "...ohhsssSo.....",
+    "....ossSSo......",
+    ".....oSSo.......",
+    "....ottttoo.....",
+    "...ottttttto....",
+    "...otttttTtso...",
+    "...otttttTtso...",
+    "...ottttLtto....",
+    "....ottttTo.....",
+    "....oTTTTTo.....",
+    "....ollollo.....",
+    "....ollollo.....",
+    "....ollollo.....",
+    "....ollollo.....",
+    "....obbobbo.....",
+    "....obbbbbo.....",
+    "....oooooo......",
+  ],
+  sideB: [
+    "....oooooo......",
+    "...ohhhhhho.....",
+    "..ohhhhhhho.....",
+    "..ohhhssssso....",
+    "..ohhhsssseo....",
+    "..ohhhssssso....",
+    "...ohhsssSo.....",
+    "....ossSSo......",
+    ".....oSSo.......",
+    "....ottttoo.....",
+    "...ottttttto....",
+    "...otttttTtso...",
+    "...otttttTtso...",
+    "...ottttLtto....",
+    "....ottttTo.....",
+    "....oTTTTTo.....",
+    "...ollo.ollo....",
+    "...ollo.ollo....",
+    "..ollo...ollo...",
+    "..ollo...ollo...",
+    "..obbo...obbo...",
+    "..obbbo..obbbo..",
+    "...oooo...oooo..",
+  ],
+  swordSide: [
+    "..............m.",
+    "..............m.",
+    "..............m.",
+    ".............Mm.",
+    ".............Mm.",
+    ".............Mm.",
+    ".............Mm.",
+    ".............Mm.",
+    ".............Mm.",
+    ".............ww.",
+    "............wwww",
+    ".............ww.",
+    ".............ww.",
+  ],
+  swordFront: [
+    ".............m..",
+    ".............m..",
+    "............Mm..",
+    "............Mm..",
+    "............Mm..",
+    "............Mm..",
+    "............Mm..",
+    "............Mm..",
+    "............ww..",
+    "...........wwww.",
+    "............ww..",
+  ],
+  shieldFront: [
+    ".oooo...........",
+    "oMmmMo..........",
+    "oMmmMo..........",
+    "oMmmMo..........",
+    "oMMMMo..........",
+    ".oMMo...........",
+    "..oo............",
+  ],
+  hoodFront: [
+    "....oooooo......",
+    "...ohhhhhho.....",
+    "..ohhhhhhhho....",
+    "..ohhhhhhhho....",
+    "..ohhhhhhhho....",
+    "..ohhoeooehho...",
+    "..ohhhhhhhhho...",
+    "...ohhhhhhho....",
+  ],
+};
+const RAT = [
+  ".....ooo........",
+  "....ogGgo.......",
+  "...ooggggooo....",
+  "..oggggggggoo...",
+  ".oggggGgggeggo..",
+  ".oggggggggggpo..",
+  "pooggggggggggo..",
+  "ppoGGGGGGGGGo...",
+  "...oo.oo.oo.o...",
+];
+const BOAR = [
+  "......ooooooo.......",
+  "....ooBBBBBBBoo.....",
+  "...oBBBBBBBBBBBo....",
+  "..oBBBbbbbbbBBBBo...",
+  "..oBbbbbbbbbbBBBoo..",
+  "..oBbbbbbbbbbbbbBo..",
+  "..obbbbbbbbbbbbeBBo.",
+  "..obbbbbbbbbbbbbbopo",
+  "..obbbbbbbbbbbbbbboo",
+  "...oBBBbbbbbbBBBow..",
+  "...oBBooBBBooBBo....",
+  "...obbo.obbo.obo....",
+  "...oooo.oooo.ooo....",
+];
+const PAL_RAT = { o: C.ink, g: "#7a6650", G: "#9a8870", e: "#1a1a1a", p: "#c98f8f" };
+const PAL_BOAR = { o: C.ink, b: "#6b4a30", B: "#4a3220", e: "#111", p: "#c98f8f", w: "#e9e3d3" };
+function humanPal(tunic, dark, light, hair) { return { o: C.ink, s: "#d9a877", S: "#b8865a", e: "#1a1512", h: hair, H: "#1f1a14", t: tunic, T: dark, L: light, l: "#3a3a46", b: "#2a1d12", m: "#b9bec6", M: "#6e737a", w: "#6b4a2c" }; }
+function unitSprite(id, pal, dir, frame) {
+  const ox = 8, oy = 6;
+  if (dir === "down") return sprite(id + ":f", HUMAN.front, pal, ox, oy, false);
+  if (dir === "up") return sprite(id + ":b", HUMAN.back, pal, ox, oy, false);
+  return sprite(id + ":s" + frame, frame ? HUMAN.sideB : HUMAN.sideA, pal, ox, oy, dir === "left");
+}
+function drawUnit(g, e, pal, id, opts) {
+  const px = e.x * T, py = e.y * T, dir = e.dir || "down", frame = (e.moving > 0 && Math.floor(S.t) % 2 === 0) ? 1 : 0, bob = (e.moving > 0 && frame) ? 1 : 0;
+  g.globalAlpha = .3; disc(g, px + 16, py + 29, 8, C.ink); g.globalAlpha = 1;
+  g.drawImage(unitSprite(id, pal, dir, frame), px, py - bob);
+  if (opts.hood) g.drawImage(sprite(id + ":hood", HUMAN.hoodFront, pal, 8, 6, false), px, py - bob);
+  if (opts.sword) {
+    if (dir === "down") g.drawImage(sprite("sw:f", HUMAN.swordFront, pal, 8, 8, false), px, py - bob);
+    else if (dir !== "up") g.drawImage(sprite("sw:s", HUMAN.swordSide, pal, 8, 8, dir === "left"), px, py - bob);
+  }
+  if (opts.shield && dir === "down") g.drawImage(sprite("sh:f", HUMAN.shieldFront, pal, 8, 15, false), px, py - bob);
+}
+function drawMon(g, m) {
+  const px = m.x * T, py = m.y * T, mirror = m.face < 0;
+  g.globalAlpha = .3; disc(g, px + 16, py + 28, 8, C.ink); g.globalAlpha = 1;
+  if (m.type === "rato") g.drawImage(sprite("rat", RAT, PAL_RAT, 8, 18, mirror), px, py);
+  else if (m.type === "javali") g.drawImage(sprite("boar", BOAR, PAL_BOAR, 6, 14, mirror), px, py);
+  else drawUnit(g, { x: m.x, y: m.y, dir: mirror ? "left" : "right", moving: 0 }, humanPal("#3b3f4c", "#23262f", "#4a4e5e", "#2a2a2a"), "bandit", { sword: true });
+}
+
+// ---- chão (32 px) ----
 function tileGrass(g, px, py, x, y) {
-  rect(g, px, py, 16, 16, C.gr1);
-  noise(g, px, py, x, y, [C.gr2, C.gr4, C.gr3, C.gr2], 9, 1);
+  rect(g, px, py, 32, 32, C.gr1);
+  noise(g, px, py, x, y, [C.gr2, C.gr4, C.gr3, C.gr2, C.gr5], 26, 1, 32);
   const h = hash(x, y);
-  if (h % 5 === 0) { const ox = (h >> 3) % 13, oy = (h >> 7) % 12; rect(g, px + ox, py + oy, 1, 3, C.gr3); rect(g, px + ox + 1, py + oy + 1, 1, 2, C.gr4); rect(g, px + ox + 2, py + oy, 1, 3, C.gr3); }
-  if (h % 23 === 0) { const ox = 3 + (h >> 4) % 9, oy = 3 + (h >> 9) % 9; rect(g, px + ox, py + oy, 2, 1, C.white); rect(g, px + ox + 3, py + oy + 2, 1, 1, C.yellow); }
-  if (h % 19 === 0) { disc(g, px + 8, py + 10, 4, C.tree2); disc(g, px + 7, py + 9, 3, C.tree3); rect(g, px + 6, py + 7, 2, 1, C.tree4); rect(g, px + 8, py + 13, 3, 1, C.tree1); }
+  if (h % 4 === 0) { const ox = (h >> 3) % 26, oy = (h >> 7) % 24; rect(g, px + ox, py + oy, 1, 4, C.gr3); rect(g, px + ox + 2, py + oy + 1, 1, 3, C.gr5); rect(g, px + ox + 4, py + oy, 1, 4, C.gr3); rect(g, px + ox + 1, py + oy + 3, 4, 1, C.gr4); }
+  if (h % 27 === 0) { const ox = 6 + (h >> 4) % 18, oy = 6 + (h >> 9) % 18; rect(g, px + ox, py + oy, 2, 2, C.white); rect(g, px + ox + 4, py + oy + 3, 2, 1, C.yellow); rect(g, px + ox + 1, py + oy + 2, 1, 2, C.gr4); }
+  if (h % 21 === 0) { disc(g, px + 16, py + 20, 8, C.tree2); disc(g, px + 14, py + 18, 6, C.tree3); disc(g, px + 12, py + 16, 3, C.tree4); rect(g, px + 12, py + 27, 10, 1, C.tree1); }
 }
 function tileDirt(g, px, py, x, y) {
-  rect(g, px, py, 16, 16, C.dirt1);
-  noise(g, px, py, x, y, [C.dirt2, C.dirt3, C.dirt4, C.dirt2], 10, 2);
-  const n = (dx, dy) => ground(x + dx, y + dy) === 1;
-  const h = hash(x, y);
-  const jag = (side) => { // transição dentada com grama invadindo a terra
-    for (let i = 0; i < 16; i += 2) {
-      const d = ((h >> (i / 2)) & 1) ? 2 : 1, c = ((h >> (i / 2 + 3)) & 1) ? C.gr2 : C.gr1;
-      if (side === 0) rect(g, px + i, py, 2, d, c); if (side === 1) rect(g, px + i, py + 16 - d, 2, d, c);
-      if (side === 2) rect(g, px, py + i, d, 2, c); if (side === 3) rect(g, px + 16 - d, py + i, d, 2, c);
-    }
-  };
+  rect(g, px, py, 32, 32, C.dirt1);
+  noise(g, px, py, x, y, [C.dirt2, C.dirt3, C.dirt4, C.dirt2], 30, 2, 32);
+  const n = (dx, dy) => ground(x + dx, y + dy) === 1, h = hash(x, y);
+  const jag = side => { for (let i = 0; i < 32; i += 3) { const d = 1 + ((h >> ((i / 3) % 20)) & 3), c = ((h >> ((i / 3 + 5) % 20)) & 1) ? C.gr2 : C.gr1; if (side === 0) rect(g, px + i, py, 3, d, c); if (side === 1) rect(g, px + i, py + 32 - d, 3, d, c); if (side === 2) rect(g, px, py + i, d, 3, c); if (side === 3) rect(g, px + 32 - d, py + i, d, 3, c); } };
   if (!n(0, -1)) jag(0); if (!n(0, 1)) jag(1); if (!n(-1, 0)) jag(2); if (!n(1, 0)) jag(3);
-  if (h % 4 === 0) { rect(g, px + 3 + (h >> 4) % 9, py + 4 + (h >> 8) % 8, 3, 2, C.dirt4); rect(g, px + 4 + (h >> 4) % 9, py + 4 + (h >> 8) % 8, 1, 1, C.dirt3); }
+  if (h % 3 === 0) { const ox = 5 + (h >> 4) % 18, oy = 6 + (h >> 8) % 16; rect(g, px + ox, py + oy, 5, 3, C.dirt4); rect(g, px + ox + 1, py + oy, 3, 1, C.dirt3); rect(g, px + ox + 8, py + oy + 5, 3, 2, C.dirt4); }
 }
 function tileWater(g, px, py, x, y) {
-  rect(g, px, py, 16, 16, C.wat1);
-  noise(g, px, py, x, y, [C.wat4, C.wat2, C.wat4], 6, 3);
+  rect(g, px, py, 32, 32, C.wat1);
+  noise(g, px, py, x, y, [C.wat4, C.wat2, C.wat4], 14, 3, 32);
   const n = (dx, dy) => ground(x + dx, y + dy) === 2, h = hash(x, y);
-  rect(g, px + 2 + h % 7, py + 4 + (h >> 5) % 8, 5, 1, C.wat2); rect(g, px + 6 + (h >> 3) % 6, py + 9 + (h >> 8) % 5, 3, 1, C.wat3);
-  if (!n(0, -1)) { rect(g, px, py, 16, 1, C.dirt4); rect(g, px, py + 1, 16, 1, C.wat3); }
-  if (!n(0, 1)) { rect(g, px, py + 15, 16, 1, C.dirt4); rect(g, px, py + 14, 16, 1, C.wat2); }
-  if (!n(-1, 0)) { rect(g, px, py, 1, 16, C.dirt4); rect(g, px + 1, py, 1, 16, C.wat3); }
-  if (!n(1, 0)) { rect(g, px + 15, py, 1, 16, C.dirt4); rect(g, px + 14, py, 1, 16, C.wat2); }
+  rect(g, px + 3 + h % 14, py + 7 + (h >> 5) % 14, 9, 1, C.wat2); rect(g, px + 10 + (h >> 3) % 12, py + 18 + (h >> 8) % 9, 6, 1, C.wat3); rect(g, px + 5 + (h >> 6) % 10, py + 24 + (h >> 11) % 5, 4, 1, C.wat2);
+  if (!n(0, -1)) { rect(g, px, py, 32, 2, C.dirt4); rect(g, px, py + 2, 32, 2, C.wat3); }
+  if (!n(0, 1)) { rect(g, px, py + 30, 32, 2, C.dirt4); rect(g, px, py + 28, 32, 2, C.wat2); }
+  if (!n(-1, 0)) { rect(g, px, py, 2, 32, C.dirt4); rect(g, px + 2, py, 2, 32, C.wat3); }
+  if (!n(1, 0)) { rect(g, px + 30, py, 2, 32, C.dirt4); rect(g, px + 28, py, 2, 32, C.wat2); }
 }
 function tileCobble(g, px, py, x, y) {
-  rect(g, px, py, 16, 16, C.mortar);
-  const h = hash(x, y), o = h % 2 ? 3 : 0;
-  for (let j = 0; j < 2; j++) for (let i = 0; i < 3; i++) {
-    const sx = px + ((i * 6 + (j ? o : 0)) % 16), sy = py + j * 8, w = 5, c = ((i + j + (h >> 3)) % 4 === 0) ? C.cob3 : ((i + j) % 3 === 0 ? C.cob2 : C.cob);
-    rect(g, sx, sy + 1, w, 6, c); rect(g, sx, sy + 1, w, 1, C.cob3); rect(g, sx, sy + 6, w, 1, C.cob2);
+  rect(g, px, py, 32, 32, C.mortar);
+  const h = hash(x, y), o = h % 2 ? 6 : 0;
+  for (let j = 0; j < 3; j++) for (let i = 0; i < 3; i++) {
+    const sx = px + ((i * 11 + (j % 2 ? o : 0)) % 32), sy = py + j * 11, w = Math.min(9, px + 32 - sx), c = ((i + j + (h >> 3)) % 4 === 0) ? C.cob3 : ((i + j) % 3 === 0 ? C.cob2 : C.cob);
+    rect(g, sx, sy + 1, w, 8, c); rect(g, sx, sy + 1, w, 2, C.cob3); rect(g, sx, sy + 8, w, 1, C.cob2);
   }
 }
 function drawGround() {
@@ -461,85 +667,59 @@ function drawGround() {
   for (let y = 0; y < MH; y++) for (let x = 0; x < MW; x++) {
     const t = at(x, y), px = x * T, py = y * T, gr = ground(x, y);
     if (gr === 2) tileWater(g, px, py, x, y); else if (gr === 1) tileDirt(g, px, py, x, y); else if (gr === 4) tileCobble(g, px, py, x, y); else tileGrass(g, px, py, x, y);
-    if (t === 8) { g.globalAlpha = .35; disc(g, px + 9, py + 12, 6, C.ink); g.globalAlpha = 1; disc(g, px + 8, py + 10, 6, C.stone2); disc(g, px + 7, py + 9, 5, C.stone); disc(g, px + 6, py + 7, 2, C.stone3); rect(g, px + 4, py + 12, 8, 1, C.stone2); }
-    if (t === 7) { rect(g, px, py + 6, 16, 2, C.wood2); rect(g, px, py + 10, 16, 2, C.wood2); rect(g, px, py + 6, 16, 1, C.wood3); rect(g, px, py + 10, 16, 1, C.wood3); rect(g, px + 2, py + 3, 3, 12, C.wood2); rect(g, px + 2, py + 3, 1, 12, C.wood3); rect(g, px + 10, py + 3, 3, 12, C.wood2); rect(g, px + 10, py + 3, 1, 12, C.wood3); }
+    if (t === 8) { g.globalAlpha = .35; disc(g, px + 18, py + 24, 12, C.ink); g.globalAlpha = 1; disc(g, px + 16, py + 19, 12, C.stone2); disc(g, px + 14, py + 17, 10, C.stone); disc(g, px + 11, py + 13, 4, C.stone3); rect(g, px + 8, py + 24, 16, 2, C.stone2); rect(g, px + 20, py + 14, 2, 6, C.stone2); }
+    if (t === 7) { rect(g, px, py + 11, 32, 4, C.wood2); rect(g, px, py + 19, 32, 4, C.wood2); rect(g, px, py + 11, 32, 1, C.wood3); rect(g, px, py + 19, 32, 1, C.wood3); rect(g, px + 4, py + 5, 5, 24, C.wood2); rect(g, px + 4, py + 5, 2, 24, C.wood3); rect(g, px + 20, py + 5, 5, 24, C.wood2); rect(g, px + 20, py + 5, 2, 24, C.wood3); }
   }
-  // sombra suave das árvores no chão
-  for (let y = 0; y < MH; y++) for (let x = 0; x < MW; x++) if (at(x, y) === 3) { g.globalAlpha = .28; disc(g, x * T + 9, y * T + 13, 6, C.ink); g.globalAlpha = 1; }
+  for (let y = 0; y < MH; y++) for (let x = 0; x < MW; x++) if (at(x, y) === 3) { g.globalAlpha = .3; disc(g, x * T + 14, y * T + 26, 13, C.ink); g.globalAlpha = 1; }
 }
+// ---- objetos altos (64x64, âncora embaixo-direita do tile) ----
 function drawTree(g, x, y) {
-  const h = hash(x, y), px = x * T, py = y * T, big = h % 3 === 0, r = big ? 8 : 7, cx = px + 8, cy = py + 2;
-  rect(g, px + 6, py + 8, 5, 8, C.trunk3); rect(g, px + 7, py + 8, 3, 8, C.trunk); rect(g, px + 7, py + 8, 1, 8, C.trunk2);
+  const h = hash(x, y), px = x * T, py = y * T, big = h % 3 === 0, r = big ? 20 : 17, cx = px + 12, cy = py - 2;
+  rect(g, px + 11, py + 10, 10, 20, C.trunk3); rect(g, px + 12, py + 10, 7, 20, C.trunk); rect(g, px + 12, py + 10, 2, 20, C.trunk2); rect(g, px + 9, py + 26, 4, 4, C.trunk3); rect(g, px + 20, py + 25, 4, 5, C.trunk3);
   disc(g, cx, cy, r, C.tree1);
-  disc(g, cx - 1, cy - 1, r - 2, C.tree2);
-  disc(g, cx - 2, cy - 3, r - 4, C.tree3);
-  rect(g, cx - 3, cy - 5, 2, 1, C.tree4); rect(g, cx - 5, cy - 2, 1, 1, C.tree4); rect(g, cx + 1, cy - 4, 1, 1, C.tree4);
-  rect(g, cx + 2, cy + 3, 4, 2, C.tree1); rect(g, cx - 1, cy + 5, 5, 1, C.tree1);
-  if ((h >> 4) % 5 === 0) { rect(g, cx + 2, cy - 1, 1, 1, C.red); rect(g, cx - 4, cy + 2, 1, 1, C.red); }
+  disc(g, cx - 2, cy - 2, r - 3, C.tree2);
+  disc(g, cx - 5, cy - 6, r - 8, C.tree3);
+  disc(g, cx - 8, cy - 10, Math.max(2, r - 14), C.tree4);
+  rect(g, cx + 4, cy + 6, 9, 3, C.tree1); rect(g, cx - 3, cy + 11, 11, 2, C.tree1); rect(g, cx + 8, cy - 4, 5, 2, C.tree2); rect(g, cx - 12, cy + 4, 2, 1, C.tree4); rect(g, cx + 2, cy - 12, 2, 1, C.tree4);
+  if ((h >> 4) % 5 === 0) { rect(g, cx + 3, cy - 1, 2, 2, C.red); rect(g, cx - 7, cy + 5, 2, 2, C.red); rect(g, cx - 1, cy - 8, 2, 2, C.red); }
 }
 function drawHouse(g, tx, ty) {
-  const px = tx * T, py = ty * T, w = 48;
-  // parede de pedra (face frontal) com sombra lateral
-  rect(g, px, py + 20, w, 28, C.wall2); rect(g, px + 1, py + 21, w - 2, 26, C.wall);
-  for (let j = 0; j < 6; j++) for (let i = 0; i < 8; i++) { const sx = px + 1 + i * 6 + (j % 2 ? 3 : 0), sy = py + 21 + j * 4; if (sx + 5 <= px + w - 1) { rect(g, sx, sy, 5, 3, ((i + j) % 4 === 0) ? C.wall3 : C.wall); rect(g, sx, sy + 3, 5, 1, C.mortar); rect(g, sx + 5, sy, 1, 4, C.mortar); } }
-  rect(g, px + w - 1, py + 20, 1, 28, C.wall2); rect(g, px, py + 46, w, 2, C.mortar);
+  const px = tx * T, py = ty * T, w = 96;
+  // parede frontal de pedra (ocupa a linha de baixo do telhado até o chão)
+  rect(g, px, py + 44, w, 52, C.wall2); rect(g, px + 2, py + 46, w - 4, 48, C.wall);
+  for (let j = 0; j < 6; j++) for (let i = 0; i < 9; i++) { const sx = px + 2 + i * 11 + (j % 2 ? 5 : 0), sy = py + 46 + j * 8; if (sx + 10 <= px + w - 2) { rect(g, sx, sy, 10, 7, ((i + j) % 4 === 0) ? C.wall3 : C.wall); rect(g, sx, sy + 7, 10, 1, C.mortar); rect(g, sx + 10, sy, 1, 8, C.mortar); } }
+  rect(g, px + w - 2, py + 44, 2, 52, C.wall2); rect(g, px, py + 94, w, 2, C.mortar);
   // janelas e porta
-  rect(g, px + 7, py + 26, 10, 9, C.wood2); rect(g, px + 8, py + 27, 8, 7, "#2d4a6b"); rect(g, px + 11, py + 27, 2, 7, C.wood2); rect(g, px + 8, py + 30, 8, 1, C.wood2); rect(g, px + 8, py + 27, 2, 1, "#6a9ad0");
-  rect(g, px + 30, py + 26, 10, 9, C.wood2); rect(g, px + 31, py + 27, 8, 7, "#2d4a6b"); rect(g, px + 34, py + 27, 2, 7, C.wood2); rect(g, px + 31, py + 30, 8, 1, C.wood2); rect(g, px + 31, py + 27, 2, 1, "#6a9ad0");
-  rect(g, px + 19, py + 31, 10, 16, C.wood2); rect(g, px + 20, py + 32, 8, 15, C.wood); rect(g, px + 20, py + 32, 1, 15, C.wood3); rect(g, px + 24, py + 32, 1, 15, C.wood2); rect(g, px + 26, py + 39, 1, 1, C.yellow);
-  // telhado de telhas com inclinação
-  rect(g, px - 2, py, w + 4, 22, C.roof2);
-  for (let j = 0; j < 5; j++) for (let i = 0; i < 13; i++) { const sx = px - 2 + i * 4 + (j % 2 ? 2 : 0), sy = py + 1 + j * 4; rect(g, sx, sy, 3, 3, (i + j) % 7 === 0 ? C.roof3 : C.roof); rect(g, sx, sy + 3, 3, 1, C.roof2); }
-  rect(g, px - 2, py, w + 4, 1, C.roof3); rect(g, px - 2, py + 20, w + 4, 2, C.ink); g.globalAlpha = .35; rect(g, px - 2, py + 18, w + 4, 2, C.ink); g.globalAlpha = 1;
-  // chaminé com volume
-  rect(g, px + 36, py - 4, 7, 11, C.stone2); rect(g, px + 37, py - 3, 5, 9, C.stone); rect(g, px + 37, py - 3, 5, 1, C.stone3); rect(g, px + 36, py - 5, 7, 1, C.stone3); rect(g, px + 38, py - 7, 2, 2, C.stone3);
+  const win = (wx) => { rect(g, px + wx, py + 54, 20, 18, C.wood2); rect(g, px + wx + 2, py + 56, 16, 14, "#2d4a6b"); rect(g, px + wx + 9, py + 56, 2, 14, C.wood2); rect(g, px + wx + 2, py + 62, 16, 2, C.wood2); rect(g, px + wx + 2, py + 56, 4, 2, "#6a9ad0"); rect(g, px + wx - 2, py + 72, 24, 2, C.wall3); };
+  win(12); win(64);
+  rect(g, px + 38, py + 62, 20, 32, C.wood2); rect(g, px + 40, py + 64, 16, 30, C.wood); rect(g, px + 40, py + 64, 2, 30, C.wood3); rect(g, px + 47, py + 64, 2, 30, C.wood2); rect(g, px + 52, py + 78, 2, 2, C.yellow); rect(g, px + 36, py + 60, 24, 2, C.wall3);
+  // telhado: sobe 12 px pra cima e 8 pra esquerda (projeção), telhas em fileiras
+  const rx = px - 8, ry = py - 12, rw = w + 12, rh = 58;
+  rect(g, rx, ry, rw, rh, C.roof2);
+  for (let j = 0; j < 7; j++) for (let i = 0; i < 14; i++) { const sx = rx + i * 8 + (j % 2 ? 4 : 0), sy = ry + 2 + j * 8; if (sx + 7 <= rx + rw) { rect(g, sx, sy, 7, 6, (i * 3 + j) % 7 === 0 ? C.roof3 : C.roof); rect(g, sx, sy + 6, 7, 2, C.roof2); rect(g, sx, sy, 7, 1, C.roof3); } }
+  rect(g, rx, ry, rw, 2, C.roof3); rect(g, rx, ry + rh - 2, rw, 2, C.ink); g.globalAlpha = .4; rect(g, rx, ry + rh - 6, rw, 4, C.ink); rect(g, px + w, py + 44, 4, 52, C.ink); g.globalAlpha = 1;
+  // chaminé
+  rect(g, px + 70, py - 22, 14, 22, C.stone2); rect(g, px + 72, py - 20, 10, 18, C.stone); rect(g, px + 72, py - 20, 10, 2, C.stone3); rect(g, px + 69, py - 24, 16, 3, C.stone3); rect(g, px + 69, py - 24, 16, 1, C.white);
 }
 function drawStall(g, tx, ty) {
   const px = (tx - 1) * T, py = ty * T;
-  rect(g, px + 2, py + 6, 28, 10, C.wood2); rect(g, px + 3, py + 7, 26, 8, C.wood); rect(g, px + 3, py + 7, 26, 1, C.wood3); rect(g, px + 3, py + 11, 26, 1, C.wood2);
-  rect(g, px + 5, py + 8, 5, 3, C.orange); rect(g, px + 12, py + 8, 5, 3, C.tree3); rect(g, px + 19, py + 8, 5, 3, C.yellow); rect(g, px + 7, py + 8, 1, 1, C.white);
-  rect(g, px + 2, py - 6, 2, 13, C.wood2); rect(g, px + 28, py - 6, 2, 13, C.wood2);
-  rect(g, px, py - 9, 32, 7, C.red); for (let i = 0; i < 8; i++) if (i % 2) rect(g, px + i * 4, py - 9, 4, 7, "#c9b48a");
-  rect(g, px, py - 9, 32, 1, "#d8c9a4"); rect(g, px, py - 3, 32, 1, C.ink);
+  rect(g, px + 4, py + 12, 56, 20, C.wood2); rect(g, px + 6, py + 14, 52, 16, C.wood); rect(g, px + 6, py + 14, 52, 2, C.wood3); rect(g, px + 6, py + 22, 52, 1, C.wood2); rect(g, px + 6, py + 28, 52, 2, C.wood2);
+  rect(g, px + 10, py + 16, 10, 5, C.orange); rect(g, px + 24, py + 16, 10, 5, C.tree3); rect(g, px + 38, py + 16, 10, 5, C.yellow); rect(g, px + 13, py + 16, 2, 2, C.white); rect(g, px + 27, py + 17, 2, 2, C.tree4);
+  rect(g, px + 4, py - 12, 4, 26, C.wood2); rect(g, px + 56, py - 12, 4, 26, C.wood2); rect(g, px + 5, py - 12, 1, 26, C.wood3); rect(g, px + 57, py - 12, 1, 26, C.wood3);
+  rect(g, px, py - 18, 64, 12, C.red); for (let i = 0; i < 8; i++) if (i % 2) rect(g, px + i * 8, py - 18, 8, 12, "#c9b48a");
+  rect(g, px, py - 18, 64, 2, "#d8c9a4"); rect(g, px, py - 7, 64, 1, C.ink); for (let i = 0; i < 8; i++) rect(g, px + i * 8 + 2, py - 6, 4, 2, i % 2 ? "#c9b48a" : C.red);
+}
+function drawSign(g, tx, ty) {
+  const px = tx * T, py = ty * T;
+  rect(g, px + 13, py - 20, 6, 26, C.wood2); rect(g, px + 14, py - 20, 2, 26, C.wood3);
+  rect(g, px + 2, py - 30, 28, 16, C.wood2); rect(g, px + 4, py - 28, 24, 12, C.wood); rect(g, px + 4, py - 28, 24, 2, C.wood3); rect(g, px + 8, py - 24, 16, 2, C.wood2); rect(g, px + 8, py - 20, 12, 2, C.wood2);
 }
 function drawOver() {
   const g = over.getContext("2d");
   g.clearRect(0, 0, over.width, over.height);
   for (let y = 0; y < MH; y++) for (let x = 0; x < MW; x++) if (at(x, y) === 3) drawTree(g, x, y);
   drawHouse(g, 3, 2); drawHouse(g, 7, 2); drawStall(g, DEPOT.x, DEPOT.y);
-  for (const h of HUNTS) { const px = h.door[0] * T, py = h.door[1] * T; rect(g, px + 6, py - 14, 3, 13, C.wood2); rect(g, px + 7, py - 13, 1, 12, C.wood3); rect(g, px + 1, py - 18, 14, 8, C.wood2); rect(g, px + 2, py - 17, 12, 6, C.wood); rect(g, px + 2, py - 17, 12, 1, C.wood3); rect(g, px + 4, py - 15, 8, 1, C.wood2); rect(g, px + 4, py - 13, 6, 1, C.wood2); }
-}
-function drawHuman(g, x, y, tunic, dark, hair, opts) {
-  const px = x * T, py = y * T - (opts.bob ? 1 : 0), f = opts.face;
-  g.globalAlpha = .3; disc(g, px + 8, py + 15, 4, C.ink); g.globalAlpha = 1;
-  // pernas e botas
-  rect(g, px + 5, py + 11, 3, 4, dark); rect(g, px + 9, py + 11, 3, 4, dark); rect(g, px + 5, py + 14, 3, 2, C.trunk3); rect(g, px + 9, py + 14, 3, 2, C.trunk3);
-  // corpo com ombros e sombra do lado oposto à luz
-  rect(g, px + 4, py + 6, 9, 6, tunic); rect(g, px + 4, py + 6, 9, 1, "#ffffff22"); rect(g, px + 11, py + 6, 2, 6, dark); rect(g, px + 4, py + 11, 9, 1, dark);
-  rect(g, px + 3, py + 7, 1, 4, C.skin); rect(g, px + 13, py + 7, 1, 4, C.skin2);
-  // cabeça
-  rect(g, px + 5, py + 1, 6, 6, C.skin); rect(g, px + 10, py + 2, 1, 5, C.skin2);
-  rect(g, px + 5, py + 0, 6, 2, hair); rect(g, px + 4, py + 1, 1, 3, hair); rect(g, px + 11, py + 1, 1, 2, hair);
-  rect(g, px + (f < 0 ? 6 : 7), py + 3, 1, 1, C.ink); rect(g, px + (f < 0 ? 8 : 9), py + 3, 1, 1, C.ink);
-  if (opts.sword) { const sx = f < 0 ? px + 1 : px + 14; rect(g, sx, py + 3, 1, 9, C.stone3); rect(g, sx, py + 3, 1, 1, C.white); rect(g, sx - 1, py + 10, 3, 1, C.wood3); rect(g, sx, py + 11, 1, 2, C.wood2); }
-  if (opts.shield) { const sx = f < 0 ? px + 12 : px + 1; rect(g, sx, py + 6, 3, 6, dark); rect(g, sx + 1, py + 7, 1, 4, C.stone3); }
-}
-function drawMon(g, m) {
-  const px = m.x * T, py = m.y * T, f = m.face;
-  g.globalAlpha = .3; disc(g, px + 8, py + 14, 4, C.ink); g.globalAlpha = 1;
-  if (m.type === "rato") {
-    disc(g, px + 8, py + 10, 4, "#5a4a3c"); disc(g, px + 7, py + 9, 3, "#7a6650"); rect(g, px + 6, py + 7, 2, 1, "#8c7860");
-    rect(g, px + (f < 0 ? 4 : 10), py + 6, 2, 2, "#5a4a3c"); rect(g, px + (f < 0 ? 4 : 11), py + 6, 1, 1, C.pink);
-    rect(g, px + (f < 0 ? 11 : 1), py + 11, 4, 1, "#b58a8a"); rect(g, px + (f < 0 ? 5 : 10), py + 9, 1, 1, C.ink); rect(g, px + (f < 0 ? 2 : 13), py + 10, 1, 1, C.pink);
-  } else if (m.type === "javali") {
-    rect(g, px + 2, py + 6, 12, 8, "#4a3220"); rect(g, px + 3, py + 6, 10, 6, "#6b4a30"); rect(g, px + 3, py + 6, 10, 2, "#7f5c3c"); rect(g, px + 3, py + 11, 10, 1, "#3a2416");
-    rect(g, px + (f < 0 ? 0 : 12), py + 7, 4, 5, "#5a3c26"); rect(g, px + (f < 0 ? 1 : 13), py + 9, 2, 2, C.pink);
-    rect(g, px + (f < 0 ? 2 : 11), py + 11, 1, 2, C.white); rect(g, px + (f < 0 ? 4 : 11), py + 7, 1, 1, C.ink);
-    rect(g, px + 4, py + 13, 2, 2, "#2e1c10"); rect(g, px + 10, py + 13, 2, 2, "#2e1c10"); rect(g, px + 5, py + 4, 2, 3, "#4a3220"); rect(g, px + 9, py + 4, 2, 3, "#4a3220");
-  } else {
-    drawHuman(g, m.x, m.y, "#3b3f4c", "#23262f", "#2a2a2a", { face: f, sword: true });
-    rect(g, px + 5, py + 2, 6, 2, "#7a2a2a"); rect(g, px + 5, py + 4, 6, 2, "#5a4a3c");
-  }
+  for (const h of HUNTS) drawSign(g, h.door[0], h.door[1]);
 }
 
 // ---------- render ----------
@@ -570,25 +750,25 @@ function render() {
   const bob = Math.floor(S.t) % 2 === 0;
   const ents = [];
   for (const m of S.mons) if (m.alive) ents.push({ y: m.y, draw: () => drawMon(cx, m) });
-  for (const b of S.bots) ents.push({ y: b.y, draw: () => drawHuman(cx, b.x, b.y, KING[b.king].tunic, KING[b.king].dark, b.hair, { face: b.face, sword: true, bob: b.moving > 0 && bob }) });
-  if (P.dead === 0 || bob) ents.push({ y: P.y, draw: () => drawHuman(cx, P.x, P.y, KING.grey.tunic, KING.grey.dark, "#3a2415", { face: P.face, sword: true, shield: true, bob: P.moving > 0 && bob }) });
+  for (const b of S.bots) ents.push({ y: b.y, draw: () => drawUnit(cx, b, humanPal(KING[b.king].tunic, KING[b.king].dark, KING[b.king].light, b.hair), "bot:" + b.name, { sword: true }) });
+  if (P.dead === 0 || bob) ents.push({ y: P.y, draw: () => drawUnit(cx, P, humanPal(KING.grey.tunic, KING.grey.dark, KING.grey.light, "#3a2415"), "player", { sword: true, shield: true }) });
   ents.sort((a, b) => a.y - b.y).forEach(e => e.draw());
-  if (P.immune > 0) { cx.strokeStyle = "rgba(255,255,255,.7)"; cx.lineWidth = 1; cx.strokeRect(P.x * T + 1.5, P.y * T + .5, 13, 15); }
+  if (P.immune > 0) { cx.strokeStyle = "rgba(255,255,255,.7)"; cx.lineWidth = 1; cx.strokeRect(P.x * T + 3.5, P.y * T + 1.5, 25, 29); }
   cx.drawImage(over, cxr, cyr, VW, VH, cxr, cyr, VW, VH);
   cx.restore();
   // rota (em espaço de tela)
   if (P.route.length) {
     cx.strokeStyle = "rgba(255,246,232,.85)"; cx.lineWidth = 2; cx.setLineDash([3, 5]); cx.beginPath();
-    P.route.forEach((w, i) => { const x = sx(w.x * T + 8), y = sy(w.y * T + 8); i ? cx.lineTo(x, y) : cx.moveTo(x, y); });
-    if (P.route.length > 1) cx.lineTo(sx(P.route[0].x * T + 8), sy(P.route[0].y * T + 8)); cx.stroke(); cx.setLineDash([]);
-    P.route.forEach((w, i) => { const x = sx(w.x * T + 8), y = sy(w.y * T + 8); cx.fillStyle = C.out; cx.beginPath(); cx.arc(x, y, 9, 0, 7); cx.fill(); cx.fillStyle = i === P.wp ? "#5df2c2" : "#fff6e8"; cx.beginPath(); cx.arc(x, y, 7, 0, 7); cx.fill(); cx.fillStyle = C.out; cx.font = "900 10px Nunito"; cx.textAlign = "center"; cx.fillText(String(i + 1), x, y + 3.5); });
+    P.route.forEach((w, i) => { const x = sx(w.x * T + 16), y = sy(w.y * T + 16); i ? cx.lineTo(x, y) : cx.moveTo(x, y); });
+    if (P.route.length > 1) cx.lineTo(sx(P.route[0].x * T + 16), sy(P.route[0].y * T + 16)); cx.stroke(); cx.setLineDash([]);
+    P.route.forEach((w, i) => { const x = sx(w.x * T + 16), y = sy(w.y * T + 16); cx.fillStyle = C.out; cx.beginPath(); cx.arc(x, y, 9, 0, 7); cx.fill(); cx.fillStyle = i === P.wp ? "#5df2c2" : "#fff6e8"; cx.beginPath(); cx.arc(x, y, 7, 0, 7); cx.fill(); cx.fillStyle = C.out; cx.font = "900 10px Nunito"; cx.textAlign = "center"; cx.fillText(String(i + 1), x, y + 3.5); });
   }
   // nomes e números
-  for (const b of S.bots) label(b.name, sx(b.x * T + 8), sy(b.y * T) - 4, KING[b.king].color);
-  label(P.name, sx(P.x * T + 8), sy(P.y * T) - 4, KING.grey.color);
+  for (const b of S.bots) label(b.name, sx(b.x * T + 16), sy(b.y * T) - 2, KING[b.king].color);
+  label(P.name, sx(P.x * T + 16), sy(P.y * T) - 2, KING.grey.color);
   for (const m of S.mons) if (m.alive && m.hp < MONS[m.type].hp) { const x = sx(m.x * T + 2), y = sy(m.y * T + 15); cx.fillStyle = C.out; cx.fillRect(x - 1, y - 1, 26, 5); cx.fillStyle = "#e33"; cx.fillRect(x, y, 24 * m.hp / MONS[m.type].hp, 3); }
-  for (let i = fx.length - 1; i >= 0; i--) { const f = fx[i]; f.t--; if (f.t <= 0) { fx.splice(i, 1); continue; } cx.font = "900 11px Nunito"; cx.textAlign = "center"; cx.fillStyle = C.out; cx.fillText(f.v, sx(f.x * T + 8) + 1, sy(f.y * T) - 6 - (8 - f.t) * 1.5 + 1); cx.fillStyle = f.c; cx.fillText(f.v, sx(f.x * T + 8), sy(f.y * T) - 6 - (8 - f.t) * 1.5); }
-  for (const h of HUNTS) { const o = occupantsOf(h.id).length; label(`${h.name} · ${o} ocupante${o === 1 ? "" : "s"}`, sx(h.door[0] * T + 8), sy(h.door[1] * T) - 38, o >= 3 ? "#ff8a8a" : o === 2 ? "#ffd27a" : "#fff6e8", 11); }
+  for (let i = fx.length - 1; i >= 0; i--) { const f = fx[i]; f.t--; if (f.t <= 0) { fx.splice(i, 1); continue; } cx.font = "900 11px Nunito"; cx.textAlign = "center"; cx.fillStyle = C.out; cx.fillText(f.v, sx(f.x * T + 16) + 1, sy(f.y * T) - 6 - (8 - f.t) * 1.5 + 1); cx.fillStyle = f.c; cx.fillText(f.v, sx(f.x * T + 16), sy(f.y * T) - 6 - (8 - f.t) * 1.5); }
+  for (const h of HUNTS) { const o = occupantsOf(h.id).length; label(`${h.name} · ${o} ocupante${o === 1 ? "" : "s"}`, sx(h.door[0] * T + 16), sy(h.door[1] * T) - 34, o >= 3 ? "#ff8a8a" : o === 2 ? "#ffd27a" : "#fff6e8", 11); }
   label("Capital · zona segura", sx((CAPITAL.x + 4.5) * T), sy((CAPITAL.y + 7.5) * T) + 4, "#9cc3ff", 11);
   // minimapa
   const mw = mini.width, mh = mini.height, mx = cv.width - mw - 8, my = 8;
