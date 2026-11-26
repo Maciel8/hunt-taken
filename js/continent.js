@@ -142,7 +142,8 @@ const L1 = new Map(), L1_MAX = 81, pending = new Set(); let inflight = 0;
 function startWorker(net, tex, version) {
   try {
     const w = new Worker(new URL("./world.worker.js", import.meta.url), { type: "module" }); CONT.worker = w;
-    w.onmessage = e => { const m = e.data; if (m.type !== "chunk") return; inflight--; const k = m.cx + "," + m.cy; pending.delete(k);
+    w.onmessage = e => { const m = e.data; if (m.type === "lod") { lodInflight--; const k = m.cx + "," + m.cy; lodPending.delete(k); LOD.set(k, m.g); while (LOD.size > LOD_MAX) { const [k0, v] = LOD.entries().next().value; LOD.delete(k0); try { v.close(); } catch (er) { } } return; }
+      if (m.type !== "chunk") return; inflight--; const k = m.cx + "," + m.cy; pending.delete(k);
       L1.set(k, { g: m.g, w: m.w }); CONT.stats[m.src === "L2" ? "l2" : "gen"]++;
       while (L1.size > L1_MAX) { const [k0, v] = L1.entries().next().value; L1.delete(k0); try { v.g.close(); v.w.close(); } catch (er) { } } };
     w.onerror = e => console.warn("worker do mundo", e.message);
@@ -152,8 +153,20 @@ function startWorker(net, tex, version) {
 function request(cx, cy) { const k = cx + "," + cy; if (L1.has(k) || pending.has(k) || !CONT.worker || inflight >= 6) return; pending.add(k); inflight++; CONT.worker.postMessage({ type: "chunk", cx, cy }); }
 const PXC = CHUNK * T;      // 1024 px de mundo por pedaço
 // desenha o chão do continente visível; o coração é desenhado por cima pelo art.js
-export function drawContinent(g, ox, oy, WW, WH, t) {
+export const LOD_ZOOM = .12;
+const LOD = new Map(), LOD_MAX = 2500, lodPending = new Set(); let lodInflight = 0;
+function requestLod(cx, cy) { const k = cx + "," + cy; if (LOD.has(k) || lodPending.has(k) || !CONT.worker || lodInflight >= 12) return; lodPending.add(k); lodInflight++; CONT.worker.postMessage({ type: "lod", cx, cy }); }
+// zoom bem afastado: pedaços de 1 pixel por tile; o que ainda não chegou usa o mapa-múndi
+function drawLod(g, ox, oy, WW, WH) {
+  const cx0 = fl(ox / PXC), cy0 = fl(oy / PXC), cx1 = fl((ox + WW) / PXC), cy1 = fl((oy + WH) / PXC), mid = [(cx0 + cx1) / 2, (cy0 + cy1) / 2], miss = [];
+  if (CONT.overview) { g.imageSmoothingEnabled = true; g.drawImage(CONT.overview, (ox / T + TR.OX) / 10, (oy / T + TR.OY) / 10, WW / T / 10, WH / T / 10, ox, oy, WW, WH); }
+  g.imageSmoothingEnabled = false; if (WW / PXC > 60) return;   // continente inteiro na tela: só o mapa-múndi
+  for (let cy = cy0; cy <= cy1; cy++) for (let cx = cx0; cx <= cx1; cx++) { const b = LOD.get(cx + "," + cy); if (b) g.drawImage(b, cx * PXC, cy * PXC, PXC + 1, PXC + 1); else miss.push([cx, cy]); }
+  miss.sort((a, b) => Math.hypot(a[0] - mid[0], a[1] - mid[1]) - Math.hypot(b[0] - mid[0], b[1] - mid[1])); for (const [cx, cy] of miss) requestLod(cx, cy);
+}
+export function drawContinent(g, ox, oy, WW, WH, t, zoom = 1) {
   if (!CONT.ready) return;
+  if (zoom < LOD_ZOOM) return drawLod(g, ox, oy, WW, WH);
   const cx0 = fl(ox / PXC), cy0 = fl(oy / PXC), cx1 = fl((ox + WW) / PXC), cy1 = fl((oy + WH) / PXC);
   const mid = [(cx0 + cx1) / 2, (cy0 + cy1) / 2], order = [];
   for (let cy = cy0; cy <= cy1; cy++) for (let cx = cx0; cx <= cx1; cx++) order.push([cx, cy]);

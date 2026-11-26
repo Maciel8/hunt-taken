@@ -3,7 +3,7 @@ import { T, MW, MH, HUNTS, MONS, KING, ZONES, TOWNS } from "./data.js";
 import { objects, huntAt, regionAt, zoneAt, NPCS, ROOMS, interiorAt } from "./world.js";
 import { S, fx, occupantsOf } from "./sim.js";
 import { A, drawGround, drawObject, drawProps, drawMon, drawUnit, CH } from "./art.js";
-import { drawContinent, drawShips, procObjects, drawMiniOverview, cities as contCities, CONT } from "./continent.js";
+import { drawContinent, drawShips, procObjects, drawMiniOverview, cities as contCities, CONT, LOD_ZOOM } from "./continent.js";
 import { OX, OY, SIZE } from "./terrain.js";
 import { updateFx, drawFx } from "./fx.js";
 import { NODES, nodeStatus, TOOL_ICON, PROF_VERB } from "./gather.js";
@@ -11,7 +11,7 @@ export const hover = { node: null };
 
 export const cv = document.getElementById("view"), cx = cv.getContext("2d");
 let VW = cv.width, VH = cv.height;
-export const cam = { x: 0, y: 0, follow: true, init: false, zoom: 1, min: .15, max: 2.5 };
+export const cam = { x: 0, y: 0, follow: true, init: false, zoom: 1, min: .0025, max: 2.5 };
 // zoom em torno de um ponto da tela (sx, sy); sem ponto, usa o centro
 export function zoomBy(f, sx, sy) { const z0 = cam.zoom, z1 = Math.max(cam.min, Math.min(cam.max, z0 * f)); if (z1 === z0) return; if (sx == null) { sx = VW / 2; sy = VH / 2; } const wx = cam.x + sx / z0, wy = cam.y + sy / z0; cam.zoom = z1; cam.x = wx - sx / z1; cam.y = wy - sy / z1; }
 const MINI = { w: 240, h: 160 };
@@ -47,19 +47,21 @@ export function render(dt) {
   cx.setTransform(1, 0, 0, 1, 0, 0); cx.imageSmoothingEnabled = false;
   cx.fillStyle = "#171522"; cx.fillRect(0, 0, VW, VH);
   cx.save(); cx.setTransform(z, 0, 0, z, -ox * z, -oy * z);
-  if (!room) drawContinent(cx, ox, oy, WW, WH, S.t || performance.now() / 1000);
-  drawGround(cx, ox, oy, WW, WH);
+  const far = !room && z < LOD_ZOOM;
+  if (!room) drawContinent(cx, ox, oy, WW, WH, S.t || performance.now() / 1000, z);
+  if (far) { cx.imageSmoothingEnabled = true; if (A.paint) cx.drawImage(A.paint, 0, 0, MW * T, MH * T); cx.imageSmoothingEnabled = false; }   // longe: o coração vira a pintura
+  else drawGround(cx, ox, oy, WW, WH);
   if (!room) drawShips(cx, performance.now() / 1000);
   const tx0 = Math.floor(ox / T) - 2, ty0 = Math.floor(oy / T) - 2, tx1 = Math.ceil((ox + WW) / T) + 2, ty1 = Math.ceil((oy + WH) / T) + 6;
-  drawProps(cx, tx0, ty0, tx1, ty1);
+  if (!far) drawProps(cx, tx0, ty0, tx1, ty1);
   // área de caça atual: círculo pontilhado dourado
   const hh = P.huntId && HUNTS.find(x => x.id === P.huntId);
   if (hh) { cx.strokeStyle = "rgba(193,139,54,.75)"; cx.lineWidth = 2; cx.setLineDash([8, 8]); cx.beginPath(); cx.arc((hh.cx + .5) * T, (hh.cy + .5) * T, hh.r * T, 0, 6.283); cx.stroke(); cx.setLineDash([]); }
   // lista de profundidade
   const ents = [];
-  for (let by = Math.floor(ty0 / CH) - 1; by <= Math.floor(ty1 / CH) + 1; by++) for (let bx = Math.floor(tx0 / CH) - 1; bx <= Math.floor(tx1 / CH) + 1; bx++) { const list = bucket.get(bx + "," + by); if (!list) continue; for (const o of list) if (o.x >= tx0 - 6 && o.x <= tx1 + 6 && o.y >= ty0 && o.y <= ty1 + 4) ents.push({ y: o.y + 1, d: () => drawObject(cx, o) }); }
-  if (!room) for (const o of procObjects(tx0 - 6, ty0, tx1 + 6, ty1 + 4)) ents.push({ y: o.y + 1, d: () => drawObject(cx, o) });
-  for (const m of S.mons) if (m.alive && m.x > tx0 && m.x < tx1 && m.y > ty0 && m.y < ty1) ents.push({ y: m.y + 1, d: () => drawMon(cx, m) });
+  if (!far) for (let by = Math.floor(ty0 / CH) - 1; by <= Math.floor(ty1 / CH) + 1; by++) for (let bx = Math.floor(tx0 / CH) - 1; bx <= Math.floor(tx1 / CH) + 1; bx++) { const list = bucket.get(bx + "," + by); if (!list) continue; for (const o of list) if (o.x >= tx0 - 6 && o.x <= tx1 + 6 && o.y >= ty0 && o.y <= ty1 + 4) ents.push({ y: o.y + 1, d: () => drawObject(cx, o) }); }
+  if (!room && !far) for (const o of procObjects(tx0 - 6, ty0, tx1 + 6, ty1 + 4)) ents.push({ y: o.y + 1, d: () => drawObject(cx, o) });
+  if (z >= .05) for (const m of S.mons) if (m.alive && m.x > tx0 && m.x < tx1 && m.y > ty0 && m.y < ty1) ents.push({ y: m.y + 1, d: () => drawMon(cx, m) });
   for (const n of NPCS) if (n.x > tx0 && n.x < tx1 && n.y > ty0 && n.y < ty1) ents.push({ y: n.y + 1, d: () => drawUnit(cx, n) });
   for (const b of S.others || []) ents.push({ y: b.y + 1, d: () => drawUnit(cx, b) });
   if (P.dead === 0 || Math.floor(S.t) % 2) ents.push({ y: P.y + 1.01, d: () => drawUnit(cx, P) });
@@ -69,7 +71,7 @@ export function render(dt) {
   cx.restore();
   // rótulos em coordenadas de tela
   const sx = v => (v - ox) * z, sy = v => (v - oy) * z;
-  for (const t of TOWNS) { const x = sx((t.tx + .5) * T), y = sy(t.ty * T - 70); if (x > -80 && x < VW + 80 && y > -20 && y < VH + 80) label(t.name, x, y, t.zone === "segura" ? "#a8cc93" : "#cdb6ef", 12); }
+  if (z >= .08) for (const t of TOWNS) { const x = sx((t.tx + .5) * T), y = sy(t.ty * T - 70); if (x > -80 && x < VW + 80 && y > -20 && y < VH + 80) label(t.name, x, y, t.zone === "segura" ? "#a8cc93" : "#cdb6ef", 12); }
   for (const c of contCities()) { if (c.heart) continue; const x = sx((c.x + .5) * T), y = sy((c.y - 4) * T); if (x > -120 && x < VW + 120 && y > -20 && y < VH + 80) label(c.name, x, y, "#ffe6a8", 14); }
   if (cam.zoom >= .25) for (const h of HUNTS) { const x = sx((h.cx + .5) * T), y = sy((h.cy - h.r) * T) + 4; if (x < -100 || x > VW + 100 || y < -20 || y > VH + 40) continue; const o = occupantsOf(h.id).length; label(`${h.name} · lv ${MONS[h.mon].lvl}${o ? " · " + o + " online" : ""}`, x, y, "#fff6e8", 11); }
   if (cam.zoom >= .4) for (const n of NPCS) { const x = sx((n.x + .5) * T), y = sy((n.y + .5) * T - 38); if (x > -40 && x < VW + 40 && y > -10 && y < VH + 40) label(`NPC · ${n.title}`, x, y, "#ffd27a", 10, "rgba(60,40,10,.85)"); }
@@ -88,7 +90,7 @@ export function render(dt) {
   if (hover.node) { const o = hover.node, st = nodeStatus(o), x = sx((o.x + .5) * T), y = sy(o.y * T - 46);
     label(`${o.node.name} · ${PROF_VERB[o.node.prof] || "Coletar"} nível ${o.node.req}`, x, y - 16, "#f3ead6", 12); label(st.ok ? "▶ " + st.why : st.why, x, y, st.ok ? "#7ee07e" : st.state === "empty" ? "#bdb6c8" : "#ffbf3a", 11); }
   if (P.gathering) { const k = Math.max(0, Math.min(1, 1 - (P.gathering.until - Date.now()) / P.gathering.total)), x = sx((P.x + .5) * T) - 20, y = sy((P.y + .5) * T - 56); cx.fillStyle = "rgba(14,10,18,.85)"; cx.fillRect(x - 2, y - 2, 44, 8); cx.fillStyle = "#C18B36"; cx.fillRect(x, y, 40 * k, 4); label(P.gathering.node.node.name, x + 20, y - 6, "#ffd27a", 10); }
-  for (const m of S.mons) if (m.alive && (m.hp < (m.hpMax || MONS[m.type].hp) || m.boss)) { const x = sx((m.x + .5) * T) - 12, y = sy((m.y + .5) * T + 18); cx.fillStyle = "#15120f"; cx.fillRect(x - 1, y - 1, 26, 5); cx.fillStyle = m.boss ? "#ffcf5a" : "#e33"; cx.fillRect(x, y, 24 * Math.max(0, m.hp) / (m.hpMax || MONS[m.type].hp), 3); if (m.boss) label(MONS[m.type].name, x + 12, y - 44, "#ffcf5a"); }
+  if (z >= .12) for (const m of S.mons) if (m.alive && (m.hp < (m.hpMax || MONS[m.type].hp) || m.boss)) { const x = sx((m.x + .5) * T) - 12, y = sy((m.y + .5) * T + 18); cx.fillStyle = "#15120f"; cx.fillRect(x - 1, y - 1, 26, 5); cx.fillStyle = m.boss ? "#ffcf5a" : "#e33"; cx.fillRect(x, y, 24 * Math.max(0, m.hp) / (m.hpMax || MONS[m.type].hp), 3); if (m.boss) label(MONS[m.type].name, x + 12, y - 44, "#ffcf5a"); }
   for (let i = fx.length - 1; i >= 0; i--) { const f = fx[i]; f.t -= dt * 10; if (f.t <= 0) { fx.splice(i, 1); continue; } cx.font = "900 12px Nunito"; cx.textAlign = "center"; const x = sx((f.x + .5) * T), y = sy((f.y + .5) * T - 30) - (8 - f.t) * 2; cx.fillStyle = "#15120f"; cx.fillText(f.v, x + 1, y + 1); cx.fillStyle = f.c; cx.fillText(f.v, x, y); }
   // faixa de região ao entrar
   const inside = interiorAt(Math.round(P.x), Math.round(P.y)); const reg = inside ? { id: inside, name: ROOMS[inside].name, zone: ROOMS[inside].dungeon ? "conflito" : "segura" } : regionAt(P.x, P.y); if (reg && banner.region !== reg.id) { const z = inside ? reg.zone : zoneAt(P.x, P.y); if (banner.region !== null) banner = { text: reg.name, sub: inside && ROOMS[inside].dungeon ? "Masmorra" : inside ? "Interior" : ZONES[z].name, until: performance.now() + 3200, region: reg.id }; else banner.region = reg.id; }
@@ -107,7 +109,7 @@ export function render(dt) {
 // minimapa do continente: recorte do mapa-múndi em volta do centro da câmera; a pintura do coração por cima em alta
 export const mini = { span: 700, cx: 0, cy: 0 };
 function drawMini(mx, my, ccx, ccy, WW, WH, P) {
-  const span = mini.span, h = span * MINI.h / MINI.w, kx = MINI.w / span, ky = MINI.h / h; const x0 = ccx / T - span / 2, y0 = ccy / T - h / 2; mini.cx = x0; mini.cy = y0;
+  const span = Math.min(10000, Math.max(mini.span, WW / T * 1.6, WH / T * 1.6 * MINI.w / MINI.h)), h = span * MINI.h / MINI.w, kx = MINI.w / span, ky = MINI.h / h; const x0 = ccx / T - span / 2, y0 = ccy / T - h / 2; mini.cx = x0; mini.cy = y0; mini.used = span;
   cx.save(); cx.beginPath(); cx.rect(mx, my, MINI.w, MINI.h); cx.clip(); cx.fillStyle = "#12233f"; cx.fillRect(mx, my, MINI.w, MINI.h);
   cx.imageSmoothingEnabled = true; cx.drawImage(CONT.overview, (x0 + OX) / 10, (y0 + OY) / 10, span / 10, h / 10, mx, my, MINI.w, MINI.h);
   if (A.paint) cx.drawImage(A.paint, mx - x0 * kx, my - y0 * ky, MW * kx, MH * ky); cx.imageSmoothingEnabled = false;
@@ -126,7 +128,7 @@ function drawMini(mx, my, ccx, ccy, WW, WH, P) {
 }
 export function miniWheel(ev) { const r = cv.getBoundingClientRect(), x = (ev.clientX - r.left) * cv.width / r.width, y = (ev.clientY - r.top) * cv.height / r.height, mx = VW - MINI.w - 10, my = 10;
   if (x < mx || x > mx + MINI.w || y < my || y > my + MINI.h) return false; mini.span = Math.max(150, Math.min(10000, Math.round(mini.span * Math.exp(ev.deltaY * .0015)))); return true; }
-export function miniHit(ev) { const r = cv.getBoundingClientRect(); const kx = cv.width / r.width, ky = cv.height / r.height; const x = (ev.clientX - r.left) * kx, y = (ev.clientY - r.top) * ky; const mx = VW - MINI.w - 10, my = 10; if (x >= mx && x <= mx + MINI.w && y >= my && y <= my + MINI.h) { if (!CONT.ready) return { x: (x - mx) / MINI.w * MW * T, y: (y - my) / MINI.h * MH * T }; const span = mini.span, h = span * MINI.h / MINI.w; return { x: (mini.cx + (x - mx) / MINI.w * span) * T, y: (mini.cy + (y - my) / MINI.h * h) * T }; } return null; }
+export function miniHit(ev) { const r = cv.getBoundingClientRect(); const kx = cv.width / r.width, ky = cv.height / r.height; const x = (ev.clientX - r.left) * kx, y = (ev.clientY - r.top) * ky; const mx = VW - MINI.w - 10, my = 10; if (x >= mx && x <= mx + MINI.w && y >= my && y <= my + MINI.h) { if (!CONT.ready) return { x: (x - mx) / MINI.w * MW * T, y: (y - my) / MINI.h * MH * T }; const span = mini.used || mini.span, h = span * MINI.h / MINI.w; return { x: (mini.cx + (x - mx) / MINI.w * span) * T, y: (mini.cy + (y - my) / MINI.h * h) * T }; } return null; }
 export function viewSize() { return { VW: VW / cam.zoom, VH: VH / cam.zoom }; }
 export function tileAt(ev) { const r = cv.getBoundingClientRect(); const kx = cv.width / r.width, ky = cv.height / r.height; return { x: Math.floor(((ev.clientX - r.left) * kx / cam.zoom + cam.x) / T), y: Math.floor(((ev.clientY - r.top) * ky / cam.zoom + cam.y) / T) }; }
 export function screenAt(ev) { const r = cv.getBoundingClientRect(); return { x: (ev.clientX - r.left) * cv.width / r.width, y: (ev.clientY - r.top) * cv.height / r.height }; }

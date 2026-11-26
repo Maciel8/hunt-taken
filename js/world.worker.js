@@ -2,7 +2,7 @@
 // Cache L2: IndexedDB (PNG por pedaço, por versão do build). O jogo guarda o resultado como ImageBitmap (cache L1).
 // Transição entre biomas sem corte reto: cada pixel escolhe o tile por uma posição deformada por ruído (franjas orgânicas),
 // espuma onde a água encosta na terra, decoração (tufos, flores, pedrinhas) e uma camada separada de ondas.
-import { initNet, chunkTiles, B, CHUNK, OX, OY, vnoise, hashTile, isWater } from "./terrain.js";
+import { initNet, chunkTiles, B, CHUNK, OX, OY, vnoise, hashTile, isWater, BIOME_RGB } from "./terrain.js";
 const PX = 16;                       // pixels por tile no pedaço (desenhado 2× na tela)
 const N = CHUNK * PX;                // 512
 let TEX = {}, VERSION = "dev", db = null;
@@ -109,6 +109,14 @@ onmessage = async e => {
     if (db) { const v = await new Promise(res => { try { const r = db.transaction("meta").objectStore("meta").get("v"); r.onsuccess = () => res(r.result); r.onerror = () => res(null); } catch (er) { res(null); } });
       if (v !== VERSION) { await tx("c", "readwrite", s => s.clear()); await tx("meta", "readwrite", s => s.put(VERSION, "v")); } }
     postMessage({ type: "ready" }); return;
+  }
+  // nível de detalhe distante: 1 pixel por tile (zoom bem afastado)
+  if (m.type === "lod") {
+    const tiles = chunkTiles(m.cx, m.cy), n = CHUNK + 2, img = new ImageData(CHUNK, CHUNK), d = img.data;
+    for (let j = 0; j < CHUNK; j++) for (let i = 0; i < CHUNK; i++) { const b = tiles[(j + 1) * n + i + 1], o = (j * CHUNK + i) * 4; if (b === B.HEART) { d[o + 3] = 0; continue; }
+      const c = BIOME_RGB[b] || [90, 140, 70], x = m.cx * CHUNK + i, y = m.cy * CHUNK + j, f = .92 + (vnoise(x / 5, y / 5, 621) - .5) * .16 + (hashTile(x, y, 623) - .5) * .06;
+      d[o] = c[0] * f; d[o + 1] = c[1] * f; d[o + 2] = c[2] * f; d[o + 3] = 255; }
+    const bmp = await createImageBitmap(img); postMessage({ type: "lod", cx: m.cx, cy: m.cy, g: bmp }, [bmp]); return;
   }
   if (m.type === "chunk") {
     const k = m.cx + "," + m.cy;
