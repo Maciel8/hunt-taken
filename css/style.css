@@ -29,7 +29,7 @@ button:focus-visible{outline:2px solid var(--mint);outline-offset:2px}
 .map-wrap{position:relative;background:#0a0b12;border:2px solid var(--edge);border-radius:12px;overflow:hidden}
 canvas#view{display:block;width:100%;height:auto;image-rendering:pixelated;touch-action:none;cursor:crosshair}
 .maptools{position:absolute;left:8px;top:8px;display:flex;gap:6px}
-.event{position:absolute;left:50%;top:50px;transform:translateX(-50%);background:rgba(23,21,34,.9);border:2px solid var(--gold);color:var(--gold);border-radius:10px;padding:5px 12px;font-weight:900;font-size:12px;white-space:nowrap}
+.event{position:absolute;left:10px;top:52px;right:auto;max-width:calc(100% - 250px);display:flex;align-items:center;gap:8px;overflow:hidden;background:rgba(23,21,34,.9);border:2px solid var(--gold);color:var(--gold);border-radius:10px;padding:5px 12px;font-weight:900;font-size:12px;white-space:nowrap}
 .toast{position:absolute;left:50%;bottom:14px;transform:translateX(-50%);background:rgba(10,13,20,.92);border:1px solid var(--line);border-radius:10px;padding:8px 14px;font-weight:800;pointer-events:none;opacity:0;transition:opacity .2s;max-width:90%;text-align:center}.toast.show{opacity:1}.toast.bad{border-color:rgba(255,93,93,.6);color:#ffb3b3}
 .auto{display:flex;justify-content:space-between;align-items:center;gap:8px;padding:4px 0;font-size:12.5px}.auto input[type=range]{width:110px;accent-color:var(--mint)}.auto input[type=number]{width:60px;background:var(--panel2);border:1px solid var(--line);color:var(--fg);border-radius:6px;padding:3px 6px;font:700 12px var(--mono)}.auto.chk{justify-content:flex-start}.auto input[type=checkbox]{accent-color:var(--mint)}
 .occ{display:flex;align-items:center;gap:8px;padding:4px 0}.occ .name{flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}.occ button{padding:3px 8px;font-size:11px}
@@ -243,3 +243,8 @@ body[data-palette=spirit] canvas#view{filter:hue-rotate(55deg) saturate(.75) bri
 .cityrow small{display:block;color:var(--muted,#9a93a8);font-size:11px;margin-top:2px}
 .mapmode{display:flex;gap:6px;margin-bottom:8px}.mapmode button.on{background:var(--gold,#C18B36);color:#171522}
 @media (max-width:1600px){.topbar .tabs .lbl{display:none}.topbar .tabs button{padding-left:9px;padding-right:9px}}
+
+.event span{overflow:hidden;text-overflow:ellipsis}
+.event .evx{flex:none;background:none;border:0;color:var(--gold);font-weight:900;font-size:13px;line-height:1;padding:2px 4px;cursor:pointer;border-radius:4px}
+.event .evx:hover{background:rgba(193,139,54,.2)}
+.event[hidden]{display:none}

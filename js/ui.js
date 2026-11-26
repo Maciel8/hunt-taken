@@ -86,7 +86,11 @@ let avatarRaf = 0, avatarKey = "";
 function startAvatar() { const p = P(), k = p.voc + p.king + (p.seed || 0); if (avatarRaf && k === avatarKey) return; avatarKey = k; cancelAnimationFrame(avatarRaf); const c = $("avatar"); if (!c) return; const g = c.getContext("2d"); g.imageSmoothingEnabled = false; let t0 = 0;
   const loop = t => { avatarRaf = requestAnimationFrame(loop); if (t - t0 < 120 || !window.__charSprite) return; t0 = t; const q = P(); if (!q) return; const fr = q.moving ? Math.floor(t / 120) % 6 : -1, bob = q.moving ? 0 : Math.round(Math.sin(t / 400)); g.clearRect(0, 0, 56, 56); g.drawImage(window.__charSprite(q.voc, q.king, "down", fr, q.seed || 0), 4, -2 + bob, 48, 69); };
   avatarRaf = requestAnimationFrame(loop); }
-function renderEvent() { const e = S.events.find(x => !x.hunt_id); const el = $("eventBar"); if (!e) { el.hidden = true; return; } el.hidden = false; const left = new Date(e.ends_at) - now(); const hh = Math.floor(left / 3600000), mm = Math.floor(left % 3600000 / 60000); el.textContent = `EVENTO: ${e.payload?.name || e.type} · +${Math.round((e.payload?.exp || 0) * 100)}% exp · +${Math.round((e.payload?.loot || 0) * 100)}% loot · ${hh}h ${String(mm).padStart(2, "0")}m`; }
+function renderEvent() { const e = S.events.find(x => !x.hunt_id); const el = $("eventBar"); let closed = ""; try { closed = localStorage.getItem("ht_event_closed") || ""; } catch (er) { }
+  const key = e ? String(e.id || e.type) + "|" + e.ends_at : ""; if (!e || closed === key) { el.hidden = true; return; } el.hidden = false;
+  const left = new Date(e.ends_at) - now(); const hh = Math.floor(left / 3600000), mm = Math.floor(left % 3600000 / 60000);
+  el.innerHTML = `<span>EVENTO: ${e.payload?.name || e.type} · +${Math.round((e.payload?.exp || 0) * 100)}% exp · +${Math.round((e.payload?.loot || 0) * 100)}% loot · ${hh}h ${String(mm).padStart(2, "0")}m</span><button class="evx" title="Fechar aviso" aria-label="Fechar aviso">✕</button>`;
+  el.querySelector(".evx").onclick = () => { try { localStorage.setItem("ht_event_closed", key); } catch (er) { } el.hidden = true; }; }
 
 // ---------- abas ----------
 let openTab = null;
