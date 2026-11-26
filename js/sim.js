@@ -244,12 +244,13 @@ export function applyServer(st) {
   S.cstats = st.stats || {}; S.pointsFree = st.points_free || 0; S.cls = st.class; S.spec = st.spec; S.skillsOn = st.skills_on || []; S.profs = st.professions || []; S.stacks = st.stacks || []; S.carry = st.carry || { used: 0, cap: 100 }; S.gatherJob = st.gather_job; S.craftJobs = st.craft_jobs || [];
   S.gold = Number(st.gold || 0); S.gems = Number(st.gems || 0); S.clan = st.clan || null; S.quests = st.quests || []; S.trades = st.trades || []; S.clanInvites = st.clan_invites || []; S.clanSent = st.clan_sent || []; S.world = st.world || S.world || null; S.usdtEquiv = st.usdt_equiv || 0; S.clanExtra = st.clan_extra || null; S.fortOwner = st.fort_owner || null; S.marketNews = st.market_news || 0; S.admin = !!st.admin; S.dungeon = st.dungeon || null; S.inventory = st.inventory || []; S.session = st.session; S.reports = st.reports || []; S.huntState = st.hunt_state || {}; S.presence = st.presence || {}; S.occupants = st.occupants || []; S.influence = st.influence || []; S.events = st.events || []; S.medianRival = st.median_level || 1;
   // sincroniza modo/hunt local com o servidor
-  const wasHunt = p.huntId; if (!p.inDungeon) p.huntId = c.hunt_id || null;
+  // andando até uma caçada (a pé): o servidor só começa a caçada quando o personagem chega, então o "indo" local é mantido
+  const wasHunt = p.huntId; if (!p.inDungeon) p.huntId = c.hunt_id || (p.task === "goto" ? p.huntId : null);
   // primeira carga: aparece onde o servidor diz que está (na área de caça ou na vila). Depois disso a posição é do movimento local.
   if (!p.placed) { p.placed = true; const h0 = c.task === "hunt" && HUNTS.find(x => x.id === c.hunt_id); if (h0) { const f = freeTile({ ...h0, r: h0.r * .5 }); p.x = f.x; p.y = f.y; p.task = "hunt"; } else { p.x = HOME.x; p.y = HOME.y; p.task = "idle"; } }
   else if (p.inDungeon) { }
   else if (c.task === "hunt") { if (p.task === "idle" || wasHunt !== p.huntId) { p.task = huntAt(p.x, p.y)?.id === p.huntId ? "hunt" : "goto"; p.path = []; p.target = null; } }
-  else if (p.task !== "walk" && p.task !== "gather") { p.task = "idle"; if (wasHunt) { p.path = []; p.target = null; } }
+  else if (p.task !== "walk" && p.task !== "gather" && p.task !== "goto") { p.task = "idle"; if (wasHunt) { p.path = []; p.target = null; } }
   // nenhum personagem é desenhado sem posição real vinda do servidor (etapa 3). Lista de online vem do servidor.
   S.bots = []; S.ranking = st.ranking || []; S.online = st.online || 0;
   emit("ui");

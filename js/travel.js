@@ -53,9 +53,11 @@ export async function walkRoute(kind, id) {
   const d = destOf(kind, id); if (!d) return false; const p = S.p;
   const path = findPath(p.x, p.y, d.x, d.y);
   if (!path) { toastUi(`Não existe rota a pé até ${d.label}. Tente a viagem rápida.`, true); return false; }
+  // estava caçando em outro lugar: encerra aquela caçada no servidor (sem teleporte) antes de sair andando
+  if (S.server && p.huntId && p.huntId !== id && (p.task === "hunt" || p.task === "goto")) { try { applyServer(await rpc("return_home")); } catch (e) { } }
   ROUTE.on = true; ROUTE.x = d.x; ROUTE.y = d.y; ROUTE.label = d.label; ROUTE.kind = kind; ROUTE.id = id;
   ROUTE.stops = [...path.map(q => [q.x, q.y]), ...((path.rest && path.rest.stops) || []).map(s => [s.x, s.y])];
-  if (kind === "hunt") goHunt(id); else { p.huntId = null; p.task = "walk"; p.path = path; p.target = null; }
+  if (kind === "hunt") { goHunt(id); p.path = path; } else { p.huntId = null; p.task = "walk"; p.path = path; p.target = null; }
   const ui = await import("./ui.js"); ui.closeModal(); document.getElementById("npcModal").hidden = true; ui.toast(`Rota até ${d.label}: siga a linha dourada (WASD ou clique no caminho)`);
   return true;
 }

@@ -25,7 +25,7 @@ import { ITEMS, RARITY } from "./data.js";
 import { burst, ring } from "./fx.js";
 
 const $ = id => document.getElementById(id);
-S.listeners.push((ev, d) => { if (ev === "door") useDoor(d); if (ev === "toast") toast(d.msg, d.bad); if (ev === "feed") renderFeed(); if (ev === "ui") renderAll(); if (ev === "arrive") act(() => api.startHunt(d), `Caçando em ${HUNTS.find(h => h.id === d)?.name}`); if (ev === "leave") act(() => api.returnHome()); });
+S.listeners.push((ev, d) => { if (ev === "door") useDoor(d); if (ev === "toast") toast(d.msg, d.bad); if (ev === "feed") renderFeed(); if (ev === "ui") renderAll(); if (ev === "arrive") import("./cities.js").then(m => m.report()).finally(() => act(() => api.startHunt(d), `Caçando em ${HUNTS.find(h => h.id === d)?.name}`)); if (ev === "leave") act(() => api.returnHome()); });
 const loading = (on, msg) => { $("loading").hidden = !on; if (msg) $("loadingMsg").textContent = msg; };
 
 async function boot() {
