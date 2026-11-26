@@ -2,7 +2,9 @@
 import { TICK, HUNTS, HOME } from "./data.js";
 import { buildWorld, huntAt, inVila, NPCS } from "./world.js";
 import { S, P, newPlayer, spawnAll, playerTick, monTick, applyServer, log, fmt, walkTo, updateMovement, npcTick, keys } from "./sim.js";
-import { loadAssets } from "./art.js";
+import { loadAssets, A } from "./art.js";
+import { loadContinent, registerContent } from "./continent.js";
+import { startPositionReports, playerAt, clickPlayer, loadCities } from "./cities.js";
 import { render, resize, tileAt, cv, cam, miniHit, viewSize, zoomBy, screenAt, hover } from "./render.js";
 import { renderAll, renderFeed, bindUI, showCreate, showReports, toast, showHuntPop, hideHuntPop, act, openModal } from "./ui.js";
 import { showAuth, showNewPassword } from "./authui.js";
@@ -25,7 +27,7 @@ const loading = (on, msg) => { $("loading").hidden = !on; if (msg) $("loadingMsg
 
 async function boot() {
   loading(true, "carregando o mundo…");
-  await loadAssets(); buildWorld(); resize(); window.addEventListener("resize", resize); try { new ResizeObserver(() => resize()).observe(cv.parentElement); } catch (e) { }
+  await loadAssets(); let ver = "dev"; try { ver = (await (await fetch("version.json", { cache: "no-store" })).json()).v || "dev"; } catch (e) { } await loadContinent(A.tex, ver); buildWorld(); registerContent(); resize(); window.addEventListener("resize", resize); try { new ResizeObserver(() => resize()).observe(cv.parentElement); } catch (e) { }
   // link de recuperação de senha
   if (location.search.includes("reset=1") || location.hash.includes("type=recovery")) { loading(false); return showNewPassword(() => boot()); }
   const s = await auth.session();
@@ -47,7 +49,7 @@ function enter(st) {
   { const n = (S.trades || []).filter(t => !t.mine).length, k = (S.clanInvites || []).length; if (n) log(`Você tem ${n} proposta(s) de troca esperando. Veja em Trocas.`, "good"); if (k) log(`Você tem ${k} convite(s) de clã. Veja na aba Clã.`, "good"); }
   setPingHandler(async () => { try { applyServer(await api.state()); checkNotices(); renderAll(); } catch (e) { } });
   if (!started) { document.getElementById("gatherBar").addEventListener("click", e => { const b = e.target.closest("[data-gprof]"); if (b) { hideHuntPop(); gatherNearest(b.dataset.gprof); } }); }
-  if (!started) { started = true; loadCatalog().then(() => renderAll()); loadNodes(); startNodePolling(); bindUI(); bindCanvas(); bindChat(); bindNpc(); bindQuestbar(() => renderAll()); loadQuests().then(() => renderAll()); renderAll(); requestAnimationFrame(frame); loop(); }
+  if (!started) { started = true; loadCatalog().then(() => renderAll()); loadNodes(); startNodePolling(); startPositionReports(); loadCities(); bindUI(); bindCanvas(); bindChat(); bindNpc(); bindQuestbar(() => renderAll()); loadQuests().then(() => renderAll()); renderAll(); requestAnimationFrame(frame); loop(); }
   const rep = (st.reports || []).filter(r => !r.seen);
   if (rep.length) { showReports(rep); api.reportsSeen().catch(() => {}); log(`Voltou: +${fmt(rep.reduce((a, r) => a + Number(r.exp), 0))} exp, +${fmt(rep.reduce((a, r) => a + Number(r.gold_in), 0))} gold enquanto estava fora.`); }
   else if (c.task === "idle") log(`Bem-vindo, ${c.name}. Abra o Mapa ou clique numa área pra escolher onde caçar.`);
@@ -97,6 +99,7 @@ function bindCanvas() {
     if (ex) { leaveRoom(ex.room); return; }
     const npc = NPCS.find(n => Math.abs(n.x - x) <= 1 && Math.abs(n.y - y) <= 1);
     if (npc) { hideHuntPop(); npcDialog(npc); return; }
+    const pl = playerAt(x, y); if (pl) { hideHuntPop(); clickPlayer(pl); return; }
     const h = huntAt(x, y);
     if (h && P().huntId !== h.id && P().task !== "walk") { showHuntPop(h, ev.clientX, ev.clientY); return; }
     hideHuntPop();

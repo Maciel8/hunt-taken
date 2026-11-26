@@ -1,4 +1,5 @@
 // Simulação: jogador, rivais, criaturas, combate, economia, arena, guerra, off-line.
+import { extendPath } from "./continent.js";
 import { T, TICK, KING, VOC, MONS, ITEMS, RARITY, HUNTS, REGIONS, CAPITAL, DEPOT, HOME, ECON, WAR, TIERS, expFor, skillNext } from "./data.js";
 import { walk, findPath, huntAt, inRect, freeTile, regionAt, inVila, NPCS } from "./world.js";
 import { projectile, slash, burst, dying, ring, later } from "./fx.js";
@@ -103,6 +104,7 @@ export const dist = (a, b) => Math.hypot(a.x - b.x, a.y - b.y);
 export const EXTRA_HUNTS = [];
 const findHunt = id => HUNTS.find(x => x.id === id) || EXTRA_HUNTS.find(x => x.id === id);
 export function moveEntity(e, dt) {
+  if (e.path && e.path.rest && e.path.length < 4) extendPath(e.path);
   if (!e.path || !e.path.length) { e.moving = false; e.vx = 0; e.vy = 0; return; }
   let budget = e.speed * dt, moved = 0;
   while (budget > 0 && e.path.length) {

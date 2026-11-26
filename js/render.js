@@ -3,6 +3,8 @@ import { T, MW, MH, HUNTS, MONS, KING, ZONES, TOWNS } from "./data.js";
 import { objects, huntAt, regionAt, zoneAt, NPCS, ROOMS, interiorAt } from "./world.js";
 import { S, fx, occupantsOf } from "./sim.js";
 import { A, drawGround, drawObject, drawProps, drawMon, drawUnit, CH } from "./art.js";
+import { drawContinent, drawShips, procObjects, drawMiniOverview, cities as contCities, CONT } from "./continent.js";
+import { OX, OY, SIZE } from "./terrain.js";
 import { updateFx, drawFx } from "./fx.js";
 import { NODES, nodeStatus, TOOL_ICON, PROF_VERB } from "./gather.js";
 export const hover = { node: null };
@@ -40,12 +42,14 @@ export function render(dt) {
   }
   const room = ROOMS[interiorAt(Math.round(P.x), Math.round(P.y))];
   if (room) { const rx0 = room.x * T, ry0 = room.y * T, rw = room.w * T, rh = room.h * T; cam.x = rw <= WW ? rx0 + rw / 2 - WW / 2 : Math.max(rx0, Math.min(cam.x, rx0 + rw - WW)); cam.y = rh <= WH ? ry0 + rh / 2 - WH / 2 : Math.max(ry0, Math.min(cam.y, ry0 + rh - WH)); }
-  else { cam.x = Math.max(0, Math.min(cam.x, MW * T - WW)); cam.y = Math.max(0, Math.min(cam.y, MH * T - WH)); }
+  else { cam.x = Math.max(-OX * T, Math.min(cam.x, (SIZE - OX) * T - WW)); cam.y = Math.max(-OY * T, Math.min(cam.y, (SIZE - OY) * T - WH)); }
   const ox = Math.round(cam.x * z) / z, oy = Math.round(cam.y * z) / z;
   cx.setTransform(1, 0, 0, 1, 0, 0); cx.imageSmoothingEnabled = false;
   cx.fillStyle = "#171522"; cx.fillRect(0, 0, VW, VH);
   cx.save(); cx.setTransform(z, 0, 0, z, -ox * z, -oy * z);
+  if (!room) drawContinent(cx, ox, oy, WW, WH, S.t || performance.now() / 1000);
   drawGround(cx, ox, oy, WW, WH);
+  if (!room) drawShips(cx, performance.now() / 1000);
   const tx0 = Math.floor(ox / T) - 2, ty0 = Math.floor(oy / T) - 2, tx1 = Math.ceil((ox + WW) / T) + 2, ty1 = Math.ceil((oy + WH) / T) + 6;
   drawProps(cx, tx0, ty0, tx1, ty1);
   // área de caça atual: círculo pontilhado dourado
@@ -54,6 +58,7 @@ export function render(dt) {
   // lista de profundidade
   const ents = [];
   for (let by = Math.floor(ty0 / CH) - 1; by <= Math.floor(ty1 / CH) + 1; by++) for (let bx = Math.floor(tx0 / CH) - 1; bx <= Math.floor(tx1 / CH) + 1; bx++) { const list = bucket.get(bx + "," + by); if (!list) continue; for (const o of list) if (o.x >= tx0 - 6 && o.x <= tx1 + 6 && o.y >= ty0 && o.y <= ty1 + 4) ents.push({ y: o.y + 1, d: () => drawObject(cx, o) }); }
+  if (!room) for (const o of procObjects(tx0 - 6, ty0, tx1 + 6, ty1 + 4)) ents.push({ y: o.y + 1, d: () => drawObject(cx, o) });
   for (const m of S.mons) if (m.alive && m.x > tx0 && m.x < tx1 && m.y > ty0 && m.y < ty1) ents.push({ y: m.y + 1, d: () => drawMon(cx, m) });
   for (const n of NPCS) if (n.x > tx0 && n.x < tx1 && n.y > ty0 && n.y < ty1) ents.push({ y: n.y + 1, d: () => drawUnit(cx, n) });
   for (const b of S.others || []) ents.push({ y: b.y + 1, d: () => drawUnit(cx, b) });
@@ -65,6 +70,7 @@ export function render(dt) {
   // rótulos em coordenadas de tela
   const sx = v => (v - ox) * z, sy = v => (v - oy) * z;
   for (const t of TOWNS) { const x = sx((t.tx + .5) * T), y = sy(t.ty * T - 70); if (x > -80 && x < VW + 80 && y > -20 && y < VH + 80) label(t.name, x, y, t.zone === "segura" ? "#a8cc93" : "#cdb6ef", 12); }
+  for (const c of contCities()) { if (c.heart) continue; const x = sx((c.x + .5) * T), y = sy((c.y - 4) * T); if (x > -120 && x < VW + 120 && y > -20 && y < VH + 80) label(c.name, x, y, "#ffe6a8", 14); }
   for (const h of HUNTS) { const x = sx((h.cx + .5) * T), y = sy((h.cy - h.r) * T) + 4; if (x < -100 || x > VW + 100 || y < -20 || y > VH + 40) continue; const o = occupantsOf(h.id).length; label(`${h.name} · lv ${MONS[h.mon].lvl}${o ? " · " + o + " online" : ""}`, x, y, "#fff6e8", 11); }
   for (const n of NPCS) { const x = sx((n.x + .5) * T), y = sy((n.y + .5) * T - 38); if (x > -40 && x < VW + 40 && y > -10 && y < VH + 40) label(`NPC · ${n.title}`, x, y, "#ffd27a", 10, "rgba(60,40,10,.85)"); }
   for (const b of S.others || []) label(`${b.name} · ${b.lvl}`, sx((b.x + .5) * T), sy((b.y + .5) * T - 40), KING[b.king].color);
@@ -91,6 +97,12 @@ export function render(dt) {
   const mx = VW - MINI.w - 10, my = 10;
   if (room) { label(room.name, VW - 120, 30, "#ffd27a", 12); } else {
   cx.fillStyle = "rgba(10,8,14,.9)"; cx.fillRect(mx - 4, my - 4, MINI.w + 8, MINI.h + 8); cx.strokeStyle = "#C18B36"; cx.lineWidth = 2; cx.strokeRect(mx - 3, my - 3, MINI.w + 6, MINI.h + 6);
+  const outside = P.x < 0 || P.y < 0 || P.x >= MW || P.y >= MH;
+  if (outside && CONT.ready) { const m = drawMiniOverview(cx, mx, my, MINI.w, MINI.h, P.x, P.y);
+    if (m) { for (const c of contCities()) { const x = m.tx(c.x), y = m.ty(c.y); if (x > mx && x < mx + MINI.w && y > my && y < my + MINI.h) { cx.fillStyle = "#ffe6a8"; cx.fillRect(x - 2, y - 2, 5, 5); } }
+      for (const b of S.others || []) { const x = m.tx(b.x), y = m.ty(b.y); if (x > mx && x < mx + MINI.w && y > my && y < my + MINI.h) { cx.fillStyle = KING[b.king]?.color || "#fff"; cx.fillRect(x - 1, y - 1, 3, 3); } }
+      cx.fillStyle = "#fff"; cx.fillRect(m.tx(P.x) - 2, m.ty(P.y) - 2, 5, 5); cx.fillStyle = KING[P.king].color; cx.fillRect(m.tx(P.x) - 1, m.ty(P.y) - 1, 3, 3); }
+  } else {
   cx.imageSmoothingEnabled = true; if (A.paint) cx.drawImage(A.paint, mx, my, MINI.w, MINI.h); cx.imageSmoothingEnabled = false;
   const kx = MINI.w / MW, ky = MINI.h / MH;
   for (const o of NODES.values()) { const st = nodeStatus(o).state; cx.fillStyle = st === "ok" ? "#7ee07e" : st === "empty" ? "rgba(120,116,136,.6)" : "rgba(255,191,58,.8)"; cx.fillRect(mx + o.x * kx - 1, my + o.y * ky - 1, 2, 2); }
@@ -98,6 +110,7 @@ export function render(dt) {
   cx.strokeStyle = "rgba(255,255,255,.85)"; cx.lineWidth = 1; cx.strokeRect(mx + ox / T * kx + .5, my + oy / T * ky + .5, WW / T * kx, WH / T * ky);
   for (const b of S.others || []) if (b.y < MH) { cx.fillStyle = "#111"; cx.fillRect(mx + b.x * kx - 2, my + b.y * ky - 2, 5, 5); cx.fillStyle = KING[b.king]?.color || "#fff"; cx.fillRect(mx + b.x * kx - 1, my + b.y * ky - 1, 3, 3); }
   cx.fillStyle = "#fff"; cx.fillRect(mx + P.x * kx - 2, my + P.y * ky - 2, 5, 5); cx.fillStyle = KING[P.king].color; cx.fillRect(mx + P.x * kx - 1, my + P.y * ky - 1, 3, 3);
+  }
   }
   // log de combate
   cx.font = "700 11px Nunito"; cx.textAlign = "left";

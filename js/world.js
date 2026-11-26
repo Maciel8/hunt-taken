@@ -1,6 +1,7 @@
 // Mundo: constrói o território de 300x200 tiles a partir de geo.js (mesma geografia do mapa da proposta).
 // Raster em unidades de desenho (1200x800, 4 por tile = 8 px por unidade) dá bordas orgânicas; colisão, regiões e objetos ficam por tile.
-import { MW, MH, MHA, IY, HUNTS, REGIONS, CAPITAL, TOWNS, ZONES } from "./data.js";
+import { MW, MH, MHA, IY, IYR, HUNTS, REGIONS, CAPITAL, TOWNS, ZONES } from "./data.js";
+import { procWalk, procRegion, procZone, findPathWide, isRoadProc } from "./continent.js";
 import { DW, DH, UPT, REG, RIVERS, LAKES, LAKE_POLYS, ROADS, BRIDGES, FARMS, riverCurves } from "./geo.js";
 
 export const hash = (x, y) => { let h = (x * 374761393 + y * 668265263) ^ 0x5bd1e995; h = (h ^ (h >>> 13)) * 1274126177; return (h ^ (h >>> 16)) >>> 0; };
@@ -22,7 +23,10 @@ export const block = new Uint8Array(MW * MHA);   // 1 = não anda
 export const tregion = new Uint8Array(MW * MHA);
 export const objects = [];                       // {x,y,kind,sprite?,w,h,tint?,big?} em tiles (base no chão)
 export const props = [];                         // decoração sem colisão
-const idx = (x, y) => y * MW + x;
+// grade do coração (300x200) + faixa de interiores; y >= IY (mundo) cai nas linhas internas a partir de IYR
+const idx = (x, y) => (y >= IY ? y - IY + IYR : y) * MW + x;
+export const inHeart = (x, y) => x >= 0 && y >= 0 && x < MW && y < MH;
+const inRooms = (x, y) => y >= IY && y < IY + (MHA - IYR) && x >= 0 && x < MW;
 export const at = (ux, uy) => (ux < 0 || uy < 0 || ux >= DW || uy >= DH) ? -1 : uy * DW + ux;
 
 function rasterize() {
@@ -92,7 +96,9 @@ function findBridges() {
 }
 const unitsOfTile = (x, y, arr) => { let n = 0; for (let dy = 0; dy < UPT; dy++) for (let dx = 0; dx < UPT; dx++) n += arr[(y * UPT + dy) * DW + x * UPT + dx] ? 1 : 0; return n; };
 export const regionIdAt = (x, y) => (x < 0 || y < 0 || x >= MW || y >= MH) ? 0 : tregion[idx(x | 0, y | 0)];
-export const walk = (x, y) => { x = Math.floor(x); y = Math.floor(y); return x >= 0 && y >= 0 && x < MW && y < MHA && !block[idx(x, y)]; };
+const heartWalk = (x, y) => !block[idx(x, y)];
+// anda? coração e interiores pela grade; o resto do continente pelo gerador determinístico
+export const walk = (x, y) => { x = Math.floor(x); y = Math.floor(y); if (inHeart(x, y)) return heartWalk(x, y); if (inRooms(x, y)) return heartWalk(x, y); if (y >= MH && y < IY && x >= 0 && x < MW && y < MH) return false; return procWalk(x, y); };
 export const isRoadTile = (x, y) => unitsOfTile(x, y, U.road) >= 6;
 
 // ---------- construção ----------
@@ -104,12 +110,12 @@ export function buildWorld() {
     const c = (y * UPT + 2) * DW + x * UPT + 2; tregion[idx(x, y)] = U.region[c];
     const water = unitsOfTile(x, y, U.water), bridge = unitsOfTile(x, y, U.bridge);
     if (water >= 3 && bridge < 3) block[idx(x, y)] = 1;
-    if (x === 0 || y === 0 || x === MW - 1 || y === MH - 1) block[idx(x, y)] = 1;
   }
   for (let y = MH; y < MHA; y++) for (let x = 0; x < MW; x++) block[idx(x, y)] = 1;
   buildTowns();
   scatter();
   ensureReachable();
+  carveExits();
   buildInteriors();
 }
 
@@ -214,6 +220,33 @@ function scatter() {
 }
 
 // garante que toda área de caça e todo assentamento se alcança a pé a partir da vila
+// saídas do coração pro continente: uma em cada lado, a mais perto do meio da borda que já é alcançável (ou abre um corredor)
+export const EXITS = [];
+function carveExits() {
+  const start = idx(Math.round(VILA.cx / UPT), Math.round(VILA.cy / UPT) + 6), seen = new Uint8Array(MW * MHA), q = [start]; seen[start] = 1;
+  for (let i = 0; i < q.length; i++) { const c = q[i], cx = c % MW, cy = (c / MW) | 0; for (const [dx, dy] of [[1, 0], [-1, 0], [0, 1], [0, -1]]) { const nx = cx + dx, ny = cy + dy; if (nx < 0 || ny < 0 || nx >= MW || ny >= MH) continue; const n = idx(nx, ny); if (seen[n] || block[n]) continue; seen[n] = 1; q.push(n); } }
+  const sides = { n: [...Array(MW).keys()].map(x => [x, 0]), s: [...Array(MW).keys()].map(x => [x, MH - 1]), w: [...Array(MH).keys()].map(y => [0, y]), e: [...Array(MH).keys()].map(y => [MW - 1, y]) };
+  for (const [side, tiles] of Object.entries(sides)) {
+    const mid = tiles[tiles.length >> 1]; let best = null, bd = 1e9;
+    for (const [x, y] of tiles) if (seen[idx(x, y)]) { const d = Math.hypot(x - mid[0], y - mid[1]); if (d < bd) { bd = d; best = [x, y]; } }
+    if (!best || bd > tiles.length * .35) {
+      // corredor reto do meio da borda até a parte alcançável
+      const [x0, y0] = mid, dir = { n: [0, 1], s: [0, -1], w: [1, 0], e: [-1, 0] }[side]; let x = x0, y = y0;
+      for (let k = 0; k < 160 && !seen[idx(x, y)]; k++) { for (const o of [-1, 0, 1]) { const ax = side === "n" || side === "s" ? x + o : x, ay = side === "n" || side === "s" ? y : y + o; if (ax < 0 || ay < 0 || ax >= MW || ay >= MH) continue; block[idx(ax, ay)] = 0; occupied[idx(ax, ay)] = 0; } x += dir[0]; y += dir[1]; }
+      for (let i = objects.length - 1; i >= 0; i--) { const o = objects[i]; const along = side === "n" || side === "s" ? Math.abs(o.x - x0) <= 1 && (side === "n" ? o.y <= y : o.y >= y) : Math.abs(o.y - y0) <= 1 && (side === "w" ? o.x <= x : o.x >= x); if (along && o.y < MH) objects.splice(i, 1); }
+      best = mid;
+    }
+    // a faixa de 3 tiles da borda na saída fica livre
+    for (const o of [-1, 0, 1]) { const ax = side === "n" || side === "s" ? best[0] + o : best[0], ay = side === "n" || side === "s" ? best[1] : best[1] + o; if (ax >= 0 && ay >= 0 && ax < MW && ay < MH && unitsOfTile(ax, ay, U.water) < 3) block[idx(ax, ay)] = 0; }
+    EXITS.push({ side, x: best[0], y: best[1] });
+  }
+}
+// borda do coração: região e água de cada tile do contorno (o continente usa pra costurar sem emenda)
+export function heartEdge() {
+  const t = []; const push = (x, y) => t.push([x, y, tregion[idx(x, y)], unitsOfTile(x, y, U.water) >= 3 && unitsOfTile(x, y, U.bridge) < 3 ? 1 : 0, block[idx(x, y)] ? 1 : 0]);
+  for (let x = 0; x < MW; x++) { push(x, 0); push(x, MH - 1); } for (let y = 1; y < MH - 1; y++) { push(0, y); push(MW - 1, y); }
+  return { tiles: t, exits: EXITS, regions: REGION_ID };
+}
 function ensureReachable() {
   const start = idx(Math.round(VILA.cx / UPT), Math.round(VILA.cy / UPT) + 6);
   const targets = [...HUNTS.map(h => [h.cx, h.cy]), ...TOWNS.map(t => [t.tx, t.ty + 2])];
@@ -240,8 +273,9 @@ function ensureReachable() {
 
 // ---------- consultas ----------
 export const huntAt = (x, y) => { let best = null, bd = 1e9; for (const h of HUNTS) { const d = (h.cx - x) ** 2 + (h.cy - y) ** 2; if (d <= h.r * h.r && d < bd) { bd = d; best = h; } } return best; };
-export const regionAt = (x, y) => REGIONS.find(r => r.id === REGION_ID[regionIdAt(x, y)]) || REGIONS[1];
+export const regionAt = (x, y) => inHeart(Math.floor(x), Math.floor(y)) || inRooms(Math.floor(x), Math.floor(y)) ? (REGIONS.find(r => r.id === REGION_ID[regionIdAt(x, y)]) || REGIONS[1]) : procRegion(x, y);
 export function zoneAt(x, y) {
+  if (!inHeart(Math.floor(x), Math.floor(y)) && !inRooms(Math.floor(x), Math.floor(y))) return procZone(x, y);
   if (inVila(x, y)) return "segura";
   for (const t of TOWNS) if (t.zone === "segura" && Math.hypot(t.tx - x, t.ty - y) < 7) return "segura";
   return regionAt(x, y).zone;
@@ -260,14 +294,17 @@ export function findPath(sx, sy, tx, ty, maxNodes = 120000) {
     if (!ok) return null;
   }
   if (sx === tx && sy === ty) return [];
+  // fora do coração (ou atravessando a borda): caminho do continente
+  const hs = inHeart(sx, sy) || inRooms(sx, sy), ht = inHeart(tx, ty) || inRooms(tx, ty);
+  if (!hs || !ht) return findPathWide(sx, sy, tx, ty, walk, (x, y) => inHeart(x, y) ? isRoadTile(x, y) : isRoadProc(x, y), (a, b, c, d) => findPath(a, b, c, d));
   stamp++; const s = idx(sx, sy), goal = idx(tx, ty), open = new Heap();
   const H = (x, y) => { const dx = Math.abs(x - tx), dy = Math.abs(y - ty); return Math.max(dx, dy) + .4142 * Math.min(dx, dy); };
   G[s] = 0; PREV[s] = -1; STAMP[s] = stamp; open.push(s, H(sx, sy)); let n = 0;
   while (open.size && n++ < maxNodes) {
     const c = open.pop(); if (c === goal) break;
-    const cx = c % MW, cy = (c / MW) | 0, gc = G[c];
+    const cx = c % MW, cy0 = (c / MW) | 0, cy = cy0 >= IYR ? cy0 - IYR + IY : cy0, gc = G[c];
     for (const [dx, dy, w] of DIRS) {
-      const nx = cx + dx, ny = cy + dy; if (!walk(nx, ny)) continue;
+      const nx = cx + dx, ny = cy + dy; if (!(inHeart(nx, ny) || inRooms(nx, ny)) || !walk(nx, ny)) continue;
       if (dx && dy && (!walk(cx + dx, cy) || !walk(cx, cy + dy))) continue;
       const k = idx(nx, ny), road = isRoadTile(nx, ny) ? .85 : 1, g2 = gc + w * road;
       if (STAMP[k] === stamp && G[k] <= g2) continue;
@@ -275,7 +312,7 @@ export function findPath(sx, sy, tx, ty, maxNodes = 120000) {
     }
   }
   if (STAMP[goal] !== stamp) return null;
-  const pts = []; for (let c = goal; c !== s && c !== -1; c = PREV[c]) pts.push({ x: c % MW, y: (c / MW) | 0 });
+  const pts = []; for (let c = goal; c !== s && c !== -1; c = PREV[c]) { const ry = (c / MW) | 0; pts.push({ x: c % MW, y: ry >= IYR ? ry - IYR + IY : ry }); }
   pts.reverse();
   return smooth({ x: sx, y: sy }, pts);
 }
@@ -299,9 +336,9 @@ export const NPCS = [
   { x: 46, y: 38, voc: "ferreiro", title: "Ferreiro", shop: "ferreiro", king: "thorn" },
   { x: 70, y: 35, voc: "guarda", title: "Guarda", king: "grey" },
   { x: 52, y: 47, voc: "guarda", title: "Guarda", king: "grey" },
-  { x: 12, y: 215, voc: "mercador", title: "Taverneiro", king: "ash", tab: "market" },
-  { x: 48, y: 217, voc: "guarda", title: "Comandante", king: "grey" },
-  { x: 74, y: 217, voc: "druid", title: "Fazendeira", king: "thorn" },
+  { x: 12, y: IY + 7, voc: "mercador", title: "Taverneiro", king: "ash", tab: "market" },
+  { x: 48, y: IY + 9, voc: "guarda", title: "Comandante", king: "grey" },
+  { x: 74, y: IY + 9, voc: "druid", title: "Fazendeira", king: "thorn" },
   { x: 35, y: 35, voc: "guarda", title: "Guarda", king: "grey" },
   // área comercial: cada estabelecimento com seu NPC
   { x: 62, y: 40, voc: "ferreiro", title: "Metalurgista", shop: "metalurgica", king: "ash" },

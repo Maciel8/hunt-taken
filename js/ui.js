@@ -1,6 +1,8 @@
 // Interface (modo servidor): painéis leem o estado vindo do servidor; ações chamam RPC e reaplicam o estado.
 import { HOME } from "./data.js";
 import { TOWNS, MW, MH } from "./data.js";
+import { drawContinentMap, cityAtMap, cityPanel, bindCityPanel } from "./cities.js";
+import { zoneInfo } from "./continent.js";
 import { KING, VOC, MONS, ITEMS, RARITY, HUNTS, REGIONS, CAPITAL, ECON, WAR, TIERS, expFor, ZONES, zoneOf, CAPITAL_NAME } from "./data.js";
 import { inRect, inVila, VILA, freeTile } from "./world.js";
 import { REG } from "./geo.js";
@@ -94,13 +96,16 @@ async function renderTab(tab) {
   setTimeout(paintDoll, 0);
   const p = P(); const box = $("modalBody"); $("modalTitle").textContent = { wallet: "Carteira (USDT)", bestiary: "Bestiário", char: "Personagem", profs: "Ofícios", workshop: "Oficina", quests: "Missões", clan: "Clã", trades: "Trocas entre jogadores", map: "Mapa", market: "Market", equip: "Equipamento e mochila", ranks: "Ranks", arena: "Arena ranqueada (protótipo local)", war: "Guerra das Casas (protótipo local)", session: "Sessão", settings: "Conta e ajustes" }[tab];
   if (tab === "map") {
-    box.innerHTML = `<div class="mapsel"><div class="list">${REGIONS.map(r => `<div class="region ${p.lvl >= r.lvl ? "" : "locked"}" data-region="${r.id}"><div class="rh">${r.name} <small>${r.realm} · ${r.tier} · nível ${r.lvl}+</small> <span class="zone ${r.zone}">${ZONES[r.zone].name}</span></div>${HUNTS.filter(x => x.region === r.id).map(x => { const i = huntInfo(x, p), hs = huntStateOf(x.id), te = territoryOf(x.id), ev = S.events.find(e => e.hunt_id === x.id); return `<div class="hunt" data-hunt="${x.id}"><div><b>${x.name}</b>${ev ? ` <i class="tag good">${ev.payload?.name || ev.type}</i>` : ""}<small>${i.m.name} lv ${i.m.lvl} · <span style="color:${POP[hs.state][1]}">${POP[hs.state][0]}</span> · <span style="color:${TERR[te.state][1]}">${TERR[te.state][0]}</span></small></div><div class="hn"><b>${fmt(i.goldH)}</b><small>gold/h</small></div></div>`; }).join("")}</div>`).join("")}</div><div class="mapside"><canvas id="worldMap" width="900" height="600"></canvas><div class="analyser" id="analyser"><div class="muted">Passe o mouse numa região ou área de caça. O mapa mostra onde fica e você pode se teleportar.</div></div></div></div>`;
+    mapMode = (P().x < 0 || P().y < 0 || P().x >= 300 || (P().y >= 200 && P().y < 4816)) ? "continent" : mapMode;
+    box.innerHTML = `<div class="mapmode"><button data-mm="heart" class="${mapMode === "heart" ? "on" : ""}">Arken e arredores</button><button data-mm="continent" class="${mapMode === "continent" ? "on" : ""}">Continente</button></div><div class="mapsel"><div class="list">${REGIONS.map(r => `<div class="region ${p.lvl >= r.lvl ? "" : "locked"}" data-region="${r.id}"><div class="rh">${r.name} <small>${r.realm} · ${r.tier} · nível ${r.lvl}+</small> <span class="zone ${r.zone}">${ZONES[r.zone].name}</span></div>${HUNTS.filter(x => x.region === r.id).map(x => { const i = huntInfo(x, p), hs = huntStateOf(x.id), te = territoryOf(x.id), ev = S.events.find(e => e.hunt_id === x.id); return `<div class="hunt" data-hunt="${x.id}"><div><b>${x.name}</b>${ev ? ` <i class="tag good">${ev.payload?.name || ev.type}</i>` : ""}<small>${i.m.name} lv ${i.m.lvl} · <span style="color:${POP[hs.state][1]}">${POP[hs.state][0]}</span> · <span style="color:${TERR[te.state][1]}">${TERR[te.state][0]}</span></small></div><div class="hn"><b>${fmt(i.goldH)}</b><small>gold/h</small></div></div>`; }).join("")}</div>`).join("")}</div><div class="mapside"><canvas id="worldMap" width="900" height="600"></canvas><div class="analyser" id="analyser"><div class="muted">Passe o mouse numa região ou área de caça. O mapa mostra onde fica e você pode se teleportar.</div></div></div></div>`;
     sel = { region: regionOfPlayer(), hunt: P().huntId };
+    box.querySelectorAll("[data-mm]").forEach(b => b.addEventListener("click", () => { mapMode = b.dataset.mm; box.querySelectorAll("[data-mm]").forEach(x => x.classList.toggle("on", x === b)); drawWorldMap(); }));
     drawWorldMap();
-    box.querySelectorAll(".hunt").forEach(el => { const go = () => { sel = { region: HUNTS.find(h => h.id === el.dataset.hunt).region, hunt: el.dataset.hunt }; drawWorldMap(); showAnalyser(el.dataset.hunt); }; el.addEventListener("mouseenter", go); el.addEventListener("click", go); });
+    box.querySelectorAll(".hunt").forEach(el => { const go = () => { const hh0 = HUNTS.find(h => h.id === el.dataset.hunt); sel = { region: hh0.region, hunt: el.dataset.hunt }; if (hh0.city) mapMode = "continent"; drawWorldMap(); showAnalyser(el.dataset.hunt); }; el.addEventListener("mouseenter", go); el.addEventListener("click", go); });
     box.querySelectorAll(".rh").forEach(el => el.addEventListener("click", () => { const r = el.parentElement.dataset.region; sel = { region: r, hunt: null }; drawWorldMap(); showRegion(r); }));
     const cvm = $("worldMap");
-    cvm.addEventListener("click", ev => { const r = cvm.getBoundingClientRect(), x = (ev.clientX - r.left) / r.width * 1200, y = (ev.clientY - r.top) / r.height * 800; let best = null, bd = 30; for (const h of HUNTS) { const d = Math.hypot(h.cx * 4 - x, h.cy * 4 - y); if (d < bd) { bd = d; best = h; } } if (best) { sel = { region: best.region, hunt: best.id }; drawWorldMap(); showAnalyser(best.id); } else { const reg = regionAtDesign(x, y); sel = { region: reg, hunt: null }; drawWorldMap(); showRegion(reg); } });
+    cvm.addEventListener("click", ev => { const r = cvm.getBoundingClientRect(), x = (ev.clientX - r.left) / r.width * 1200, y = (ev.clientY - r.top) / r.height * 800;
+      if (mapMode === "continent") { const c = cityAtMap((ev.clientX - r.left) / r.width * cvm.width, (ev.clientY - r.top) / r.height * cvm.height, cvm.width, cvm.height); if (c) { sel = { region: c.id, hunt: null }; drawWorldMap(); showRegion(c.id); } return; } let best = null, bd = 30; for (const h of HUNTS) { const d = Math.hypot(h.cx * 4 - x, h.cy * 4 - y); if (d < bd) { bd = d; best = h; } } if (best) { sel = { region: best.region, hunt: best.id }; drawWorldMap(); showAnalyser(best.id); } else { const reg = regionAtDesign(x, y); sel = { region: reg, hunt: null }; drawWorldMap(); showRegion(reg); } });
     animMap();
   } else if (tab === "shop") { /* a loja desenha a si mesma (shops.js) */
   } else if (tab === "market") { renderMarket(box);
@@ -153,7 +158,7 @@ async function renderTab(tab) {
 let sel = { region: null, hunt: null }, mapRaf = 0;
 const REGION_POLY = { floresta: [REG.floresta], pantano: [REG.pantano], minas: [REG.minas, REG.serraLeste], montanhas: [REG.montanhas], ruinas: [REG.ruinas] };
 const REGION_TP = { vila: "Vila de Arken", campos: "Aldeia do Celeiro", floresta: "Forte Cinzento", pantano: "Vau dos Juncos", minas: "Acampamento Mineiro", montanhas: "Posto da Serra", ruinas: "Portão Partido" };
-function regionOfPlayer() { const p = P(); return inVila(p.x, p.y) ? "vila" : (HUNTS.find(h => h.id === p.huntId)?.region || "campos"); }
+function regionOfPlayer() { const p = P(); if (p.x < 0 || p.y < 0 || p.x >= 300 || (p.y >= 200 && p.y < 4816)) { const z = zoneInfo(p.x, p.y); if (z.city) return z.city.id; } return inVila(p.x, p.y) ? "vila" : (HUNTS.find(h => h.id === p.huntId)?.region || "campos"); }
 function pointIn(poly, x, y) { let c = false; for (let i = 0, j = poly.length - 1; i < poly.length; j = i++) { const [xi, yi] = poly[i], [xj, yj] = poly[j]; if ((yi > y) !== (yj > y) && x < (xj - xi) * (y - yi) / (yj - yi) + xi) c = !c; } return c; }
 function regionAtDesign(x, y) { if (((x - VILA.cx) / VILA.rx) ** 2 + ((y - VILA.cy) / VILA.ry) ** 2 < 1) return "vila"; for (const k of ["ruinas", "montanhas", "minas", "pantano", "floresta"]) if (REGION_POLY[k].some(p => pointIn(p, x, y))) return k; return "campos"; }
 function regionPath(g, id, keep) {
@@ -162,16 +167,18 @@ function regionPath(g, id, keep) {
   if (id === "campos") { g.rect(0, 0, 1200, 800); for (const k of ["floresta", "pantano", "minas", "montanhas", "ruinas"]) for (const p of REGION_POLY[k]) { g.moveTo(p[0][0], p[0][1]); for (const q of p) g.lineTo(q[0], q[1]); g.closePath(); } g.moveTo(VILA.cx + VILA.rx, VILA.cy); g.ellipse(VILA.cx, VILA.cy, VILA.rx, VILA.ry, 0, 0, 6.283, true); return; }
   for (const p of REGION_POLY[id] || []) { g.moveTo(p[0][0], p[0][1]); for (const q of p) g.lineTo(q[0], q[1]); g.closePath(); }
 }
+let mapMode = "heart";
 function drawWorldMap() {
   const c = $("worldMap"); if (!c || !A.paint) return; const g = c.getContext("2d"), k = c.width / 1200, t = performance.now() / 1000;
+  if (mapMode === "continent") { const m = drawContinentMap(g, c.width, c.height, sel.region, t); if (m) for (const h of HUNTS) if (h.city) { const on = h.id === sel.hunt; g.fillStyle = ["#7fd07a", "#f0c24a", "#e0524a"][h.ring - 1]; g.strokeStyle = "#171522"; g.lineWidth = 1.5; g.beginPath(); g.arc(m.tx(h.cx), m.ty(h.cy), on ? 6 : 4, 0, 6.283); g.fill(); g.stroke(); } return; }
   g.setTransform(1, 0, 0, 1, 0, 0); g.drawImage(A.paint, 0, 0, c.width, c.height);
   g.setTransform(k, 0, 0, k, 0, 0);
-  if (sel.region) {
+  if (sel.region && !REGIONS.find(x => x.id === sel.region)?.city) {
     // escurece tudo e devolve o brilho da região escolhida
     g.save(); g.fillStyle = "rgba(10,8,14,.6)"; g.beginPath(); g.rect(0, 0, 1200, 800); regionPath(g, sel.region, true); g.fill("evenodd"); g.restore();
     g.save(); regionPath(g, sel.region); g.strokeStyle = "#f2c46b"; g.lineWidth = 4; g.shadowColor = "#ffcf5a"; g.shadowBlur = 18; g.stroke(); g.restore();
   }
-  for (const h of HUNTS) { const x = h.cx * 4, y = h.cy * 4, on = h.id === sel.hunt, inReg = h.region === sel.region, z = REGIONS.find(r => r.id === h.region).zone;
+  for (const h of HUNTS) { if (h.city) continue; const x = h.cx * 4, y = h.cy * 4, on = h.id === sel.hunt, inReg = h.region === sel.region, z = REGIONS.find(r => r.id === h.region).zone;
     if (on) { g.strokeStyle = "rgba(255,210,120,.9)"; g.lineWidth = 3; g.beginPath(); g.arc(x, y, 18 + Math.sin(t * 4) * 4, 0, 6.283); g.stroke(); }
     g.fillStyle = { protegida: "#7aa0b8", conflito: "#c4504f", guerra: "#a98bd6", segura: "#7ea06a" }[z]; g.globalAlpha = inReg || on || !sel.region ? 1 : .45; g.strokeStyle = "#171522"; g.lineWidth = 2.5; g.beginPath(); g.arc(x, y, on ? 13 : 10, 0, 6.283); g.fill(); g.stroke();
     g.fillStyle = "#171522"; g.font = "800 10px JetBrains Mono, monospace"; g.textAlign = "center"; g.fillText(String(MONS[h.mon].lvl), x, y + 3.5); g.globalAlpha = 1; }
@@ -179,10 +186,11 @@ function drawWorldMap() {
   // você
   const p = P(); g.fillStyle = "#fff"; g.beginPath(); g.arc(p.x * 4, p.y * 4, 7, 0, 6.283); g.fill(); g.fillStyle = KING[p.king].color; g.beginPath(); g.arc(p.x * 4, p.y * 4, 4.5, 0, 6.283); g.fill();
   // placa da região
-  if (sel.region) { const r = REGIONS.find(x => x.id === sel.region); g.setTransform(1, 0, 0, 1, 0, 0); g.font = "700 20px Cinzel, serif"; const w = g.measureText(r.name).width + 36; g.fillStyle = "rgba(10,8,14,.88)"; g.fillRect(14, 14, w, 50); g.strokeStyle = "#C18B36"; g.lineWidth = 2; g.strokeRect(15, 15, w - 2, 48); g.fillStyle = "#f3ead6"; g.textAlign = "left"; g.fillText(r.name, 32, 42); g.font = "700 12px Cinzel, serif"; g.fillStyle = "#d9c79b"; g.fillText(`level ${r.lvl}+ · ${ZONES[r.zone].name}`, 32, 58); }
+  if (sel.region && !REGIONS.find(x => x.id === sel.region)?.city) { const r = REGIONS.find(x => x.id === sel.region); g.setTransform(1, 0, 0, 1, 0, 0); g.font = "700 20px Cinzel, serif"; const w = g.measureText(r.name).width + 36; g.fillStyle = "rgba(10,8,14,.88)"; g.fillRect(14, 14, w, 50); g.strokeStyle = "#C18B36"; g.lineWidth = 2; g.strokeRect(15, 15, w - 2, 48); g.fillStyle = "#f3ead6"; g.textAlign = "left"; g.fillText(r.name, 32, 42); g.font = "700 12px Cinzel, serif"; g.fillStyle = "#d9c79b"; g.fillText(`level ${r.lvl}+ · ${ZONES[r.zone].name}`, 32, 58); }
 }
 function animMap() { cancelAnimationFrame(mapRaf); const loop = () => { if (openTab !== "map" || !$("worldMap")) return; drawWorldMap(); mapRaf = requestAnimationFrame(loop); }; mapRaf = requestAnimationFrame(loop); }
 function showRegion(id) {
+  if (REGIONS.find(x => x.id === id)?.city) { $("analyser").innerHTML = cityPanel(id); bindCityPanel($("analyser")); return; }
   const r = REGIONS.find(x => x.id === id), town = TOWNS.find(t => t.name === REGION_TP[id]), hs = HUNTS.filter(h => h.region === id);
   $("analyser").innerHTML = `<h4>${r.name} <span class="zone ${r.zone}">${ZONES[r.zone].name}</span></h4><p class="muted">${ZONES[r.zone].desc}</p><div class="row"><span>Nível recomendado</span><b>${r.lvl}+</b></div><div class="row"><span>Áreas de caça</span><b>${hs.length}</b></div>${hs.map(h => `<div class="row"><small>${h.name}</small><small>${MONS[h.mon].name} lv ${MONS[h.mon].lvl}</small></div>`).join("")}<div class="actions"><button class="primary" data-tp-town="${town.name}">Teleportar pra ${town.name}</button></div>`;
 }

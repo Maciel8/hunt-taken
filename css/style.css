@@ -228,3 +228,18 @@ body[data-palette=spirit] canvas#view{filter:hue-rotate(55deg) saturate(.75) bri
 .repmat{padding:2px 0;font-weight:800}.repmat.rare{text-shadow:0 0 8px currentColor;font-size:14px}
 .pkg.locked{opacity:.5}
 @media (max-width:760px){.forge{grid-template-columns:1fr}}
+
+/* continente: zona atual e PvP na barra de cima */
+.zonebox{display:flex;align-items:center;gap:6px;margin-left:10px;padding:3px 6px 3px 10px;border:1px solid var(--line);border-radius:8px;background:rgba(10,8,14,.35);font-size:12px;white-space:nowrap}
+.zonebox .zlbl{color:var(--muted,#9a93a8);font-size:10.5px;text-transform:uppercase;letter-spacing:.06em}
+.zonebox b{max-width:190px;overflow:hidden;text-overflow:ellipsis}
+.pvpbtn{font:800 11px Nunito,sans-serif;padding:3px 9px;border-radius:6px;border:1px solid #5a4a6a;background:#2a2234;color:#cfc6dc;cursor:pointer}
+.pvpbtn.on{background:#7a2020;border-color:#e0524a;color:#ffe6e0;box-shadow:0 0 10px rgba(224,82,74,.45)}
+.pvpbtn.safe{background:#1f3322;border-color:#4f8a4a;color:#bfe3b8}
+.pvpbtn:disabled{cursor:default;opacity:.9}
+@media (max-width:900px){.zonebox .zlbl{display:none}.zonebox b{max-width:110px}}
+.citylist{display:flex;flex-direction:column;gap:6px;max-height:52vh;overflow:auto;margin:8px 0}
+.cityrow{display:flex;align-items:center;justify-content:space-between;gap:10px;padding:8px 10px;border:1px solid var(--line);border-radius:8px;background:var(--panel2)}
+.cityrow small{display:block;color:var(--muted,#9a93a8);font-size:11px;margin-top:2px}
+.mapmode{display:flex;gap:6px;margin-bottom:8px}.mapmode button.on{background:var(--gold,#C18B36);color:#171522}
+@media (max-width:1600px){.topbar .tabs .lbl{display:none}.topbar .tabs button{padding-left:9px;padding-right:9px}}

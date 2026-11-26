@@ -3,7 +3,8 @@ import { GROUNDS, PLACES } from "./geo.js";
 export const T = 32;                 // tile em px
 export const TICK = 400;             // ms por tick
 export const MW = 300, MH = 200;     // mundo em tiles (geo.js: 1200x800 unidades, 4 por tile)
-export const IY = 208, MHA = 272;    // faixa de interiores e masmorras abaixo do mapa (linhas 208 a 271)
+// interiores e masmorras ficam numa faixa além da costa sul do continente (no mundo: y >= IY); por dentro usam as linhas 208-271 da grade do coração
+export const IY = 4816, IYR = 208, MHA = 272;
 
 export const KING = {
   grey: { name: "Greyhold", color: "#6ea8ff", tunic: "#3a62b8", dark: "#24407f", light: "#5a84d6", bonus: "+5% loot" },
@@ -98,7 +99,7 @@ export const REGIONS = [   // região = parte do mapa; realm = reino territorial
   { id: "minas", name: "Fronteira de Ignareth", lvl: 60, zone: "conflito", realm: "Ignareth", tier: "hostil" },
   { id: "ruinas", name: "Fronteira de Nocthar", lvl: 80, zone: "guerra", realm: "Nocthar", tier: "elite" },
 ];
-export const zoneOf = h => REGIONS.find(r => r.id === h.region)?.zone || "protegida";
+export const zoneOf = h => h.zone || REGIONS.find(r => r.id === h.region)?.zone || "protegida";
 export const CAPITAL_NAME = "Vila de Arken";
 // terrenos de caça: posição e nome vêm de geo.js; aqui ficam criatura, quantidade e respawn. r = raio em tiles.
 const HUNT_RULES = {

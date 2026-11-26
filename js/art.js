@@ -1,5 +1,5 @@
 // Arte: texturas por bioma, chão desenhado em pedaços de 16x16 tiles com bordas orgânicas, objetos, criaturas e personagens.
-import { T, MW, MH, MHA, IY, MONS, KING } from "./data.js";
+import { T, MW, MH, MHA, IY, IYR, MONS, KING } from "./data.js";
 import { DW, DH, UPT } from "./geo.js";
 import { U, R, hash, objects, props, VILA, VILA_ST, FIELDS, ROOMS, LAVA } from "./world.js";
 import { REG, RIVERS, LAKES, LAKE_POLYS, ROADS, BRIDGES, FARMS, riverCurves } from "./geo.js";
@@ -167,7 +167,10 @@ export function chunkAt(cx, cy) {
 }
 export function drawGround(g, camX, camY, VW, VH) {
   const x0 = Math.floor(camX / (CH * T)), y0 = Math.floor(camY / (CH * T)), x1 = Math.floor((camX + VW) / (CH * T)), y1 = Math.floor((camY + VH) / (CH * T));
-  for (let cy = y0; cy <= y1; cy++) for (let cx = x0; cx <= x1; cx++) { if (cx < 0 || cy < 0 || cx * CH >= MW || cy * CH >= MHA) continue; g.drawImage(chunkAt(cx, cy), cx * CH * T, cy * CH * T, CH * T + 1, CH * T + 1); }
+  // coração recortado no retângulo exato (o continente aparece em volta); interiores na faixa a partir de IY
+  g.save(); g.beginPath(); g.rect(0, 0, MW * T, MH * T); g.rect(0, IY * T, MW * T, (MHA - IYR) * T); g.clip();
+  for (let cy = y0; cy <= y1; cy++) for (let cx = x0; cx <= x1; cx++) { if (cx < 0 || cy < 0 || cx * CH >= MW) continue; const heart = cy * CH < MH, room = cy * CH >= IY && cy * CH < IY + (MHA - IYR); if (!heart && !room) continue; g.drawImage(chunkAt(cx, cy), cx * CH * T, cy * CH * T, CH * T + 1, CH * T + 1); }
+  g.restore();
 }
 
 // ---------- sprites tingidos ----------
@@ -215,6 +218,9 @@ export function drawObject(g, o) {
   switch (o.kind) {
     case "tree": { const big = ["oak", "pine", "willow", "dead", "tree_round"].includes(o.sprite); shadow(g, cx + 4, by - 2, (big ? 18 : 11) * (o.big || 1)); if (!blit(g, o.sprite, cx, by + 2, o.big || 1, hash(o.x, o.y) % 2 === 0, o.tint)) { rect(g, cx - 3, by - 18, 6, 16, "#4a3320"); g.fillStyle = "#2f6a2a"; g.beginPath(); g.arc(cx, by - 26, 14, 0, 6.283); g.fill(); } break; }
     case "peak": { const h = hash(o.x, o.y), w = 30 + h % 14, hh = 34 + (h >>> 6) % 20; shadow(g, cx + 6, by, w * .7); g.fillStyle = "#7d8a98"; g.beginPath(); g.moveTo(cx - w, by); g.lineTo(cx - 2, by - hh); g.lineTo(cx + w, by); g.closePath(); g.fill(); g.fillStyle = "#5d6875"; g.beginPath(); g.moveTo(cx - 2, by - hh); g.lineTo(cx + w, by); g.lineTo(cx + 4, by); g.closePath(); g.fill(); g.fillStyle = "#f4f8fb"; g.beginPath(); g.moveTo(cx - w * .42, by - hh * .55); g.lineTo(cx - 2, by - hh); g.lineTo(cx + w * .4, by - hh * .5); g.lineTo(cx + 6, by - hh * .45); g.lineTo(cx - 4, by - hh * .6); g.closePath(); g.fill(); break; }
+    case "ringmark": { const col = ["#7fd07a", "#f0c24a", "#e0524a"][o.ring - 1]; shadow(g, cx + 3, by, 9); rect(g, cx - 5, by - 26, 10, 26, "#8c8478"); rect(g, cx - 5, by - 26, 10, 3, "#b0a898"); rect(g, cx - 1, by - 44, 2, 20, "#3a2a1a"); g.fillStyle = col; g.beginPath(); g.moveTo(cx + 1, by - 44); g.lineTo(cx + 15, by - 39); g.lineTo(cx + 1, by - 34); g.closePath(); g.fill(); break; }
+    case "palm": { shadow(g, cx + 6, by, 16); g.strokeStyle = "#7a5a32"; g.lineWidth = 6; g.beginPath(); g.moveTo(cx, by); g.quadraticCurveTo(cx + 10, by - 30, cx + 4, by - 58); g.stroke(); g.fillStyle = "#3f8a3a"; for (let k = 0; k < 6; k++) { const a = k / 6 * 6.283; g.beginPath(); g.ellipse(cx + 4 + Math.cos(a) * 14, by - 58 + Math.sin(a) * 6, 16, 5, a, 0, 6.283); g.fill(); } break; }
+    case "cactus": { shadow(g, cx + 3, by, 9); rect(g, cx - 5, by - 34, 10, 34, "#4f8a3e"); rect(g, cx - 14, by - 24, 6, 12, "#4f8a3e"); rect(g, cx - 14, by - 16, 10, 5, "#4f8a3e"); rect(g, cx + 8, by - 28, 6, 14, "#4f8a3e"); rect(g, cx + 4, by - 18, 10, 5, "#4f8a3e"); rect(g, cx - 3, by - 34, 2, 34, "#6aa852"); break; }
     case "ruinwall": { const h = hash(o.x, o.y), w = 26, hh = 18 + h % 22; shadow(g, cx + 4, by, 16); rect(g, cx - w / 2, by - hh, w, hh, "#5c4d6c"); rect(g, cx - w / 2, by - hh, w, 3, "#7e6e90"); for (let yy = by - hh + 6; yy < by; yy += 6) rect(g, cx - w / 2, yy, w, 1, "#463a54"); rect(g, cx - w / 2 + (h % 10), by - hh - 5, 7, 5, "#5c4d6c"); break; }
     case "wall": { rect(g, cx - 16, by - 38, 32, 38, "#a79b86"); rect(g, cx - 16, by - 38, 32, 4, "#c9bea6"); for (let yy = by - 30; yy < by; yy += 8) { rect(g, cx - 16, yy, 32, 1, "#7d7364"); const off = ((yy / 8) % 2) * 8; for (let xx = -16 + off; xx < 16; xx += 16) rect(g, cx + xx, yy - 7, 1, 7, "#7d7364"); } for (let xx = -16; xx < 16; xx += 10) rect(g, cx + xx, by - 44, 6, 6, "#a79b86"); rect(g, cx - 16, by - 4, 32, 4, "rgba(0,0,0,.25)"); break; }
     case "tower": { shadow(g, cx + 6, by, 26, 10); roofTower(g, cx, by, 44, 64, o.ruin ? "#6c5c7c" : "#c4b9a2", o.ruin ? "#3a2c48" : "#2f4f8f", o.ruin); if (o.gate) { rect(g, cx - 9, by - 22, 18, 22, "#3a2a1a"); rect(g, cx - 7, by - 20, 14, 20, "#5e4022"); } break; }

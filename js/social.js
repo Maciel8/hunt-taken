@@ -165,6 +165,7 @@ export async function questClick(b) { await act(() => api.questAction(b.dataset.
 // ---------- diálogo de NPC ----------
 const GREET = { Taverneiro: "Senta aí. Aqui se ouve de tudo, até sobre o dragão da montanha.", Comandante: "Este forte será disputado pelos clãs nas guerras agendadas. Prepare o seu.", Fazendeira: "Os ratos comem tudo que a gente planta. Obrigada por ajudar.", Guarda: "Fique atento lá fora. Precisa de algo?", Ferreiro: "Aço bom não sai de graça.", Mercador: "Poções, armas, o que precisar.", Sacerdote: "Que a luz de Arken te guie.", Banqueiro: "Seu ouro está seguro comigo." };
 export async function npcDialog(npc) {
+  if (npc.act) return import("./cities.js").then(m => m.npcAct(npc));
   if (!QUESTS.length) await loadQuests();
   const list = questsFor(npc.title), el = $("npcBox");
   if (!list.length && npc.shop) return import("./shops.js").then(m => m.openShop(npc.shop));
