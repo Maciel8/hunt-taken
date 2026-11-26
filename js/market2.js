@@ -19,7 +19,7 @@ let M = { data: null, sub: "simple", f: { cat: "", rar: 0, tier: 0, pur: 0, ench
 
 export async function renderMarket(box, sub) {
   if (sub) M.sub = sub; if (M.sub === "npc") M.sub = "buy";
-  box.innerHTML = `<div class="tabs2">${[["simple", "Comprar e vender"], ["buy", "Anúncios (avançado)"], ["orders", "Ordens de compra"], ["sell", "Anunciar"], ["mine", "Meus"]].map(([k, n]) => `<button data-msub="${k}" class="${M.sub === k ? "on" : ""}">${n}</button>`).join("")}</div><div id="msub"><div class="muted">carregando…</div></div>`;
+  box.innerHTML = `<div class="tabs2">${[["simple", "Loja e Comunidade"], ["orders", "Ordens de compra"]].map(([k, n]) => `<button data-msub="${k}" class="${M.sub === k ? "on" : ""}">${n}</button>`).join("")}</div><div id="msub"><div class="muted">carregando…</div></div>`;
   box.querySelectorAll("[data-msub]").forEach(b => b.onclick = () => renderMarket(box, b.dataset.msub));
   if (M.sub === "simple") return renderSimpleMarket($("msub"), true);
   try { M.data = await api.market2(); api.marketSeen().catch(() => { }); S.marketNews = 0; } catch (e) { $("msub").innerHTML = esc(e.message); return; }

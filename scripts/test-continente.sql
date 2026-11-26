@@ -84,11 +84,12 @@ insert into r select 't11_sacou', (bank_action('sacar', 400) ->> 'banked');
 -- 12. preço regional: barra vale +30% em Khazad, peixe +35% em Valen
 reset role;
 insert into r select 't12_valen_peixe', city_sell_mult(c, t)::text from characters c, item_templates t where c.id = :'tid' and t.id like 'peixe%' limit 1;
--- 13. viagem: Valen → Khazad custa 200 gold e põe o personagem na praça
+-- 13. viagem: Valen → Khazad custa 2 diamantes (viagem rápida), nenhum gold, e põe o personagem na praça
+reset role; update wallets set gems = greatest(gems, 5) where character_id = :'tid';
 set local role authenticated; select pg_temp.as_(:'tuid');
-select (select gold from wallets where character_id = :'tid') as g0 \gset
+select (select gems from wallets where character_id = :'tid') as g0, (select gold from wallets where character_id = :'tid') as gd0 \gset
 insert into r select 't13_viagem', (travel_city('khazad') ->> 'city');
-insert into r select 't13_custo', ((:g0 - (select gold from wallets where character_id = :'tid'))::text);
+insert into r select 't13_custo', format('%s gemas, %s gold', :g0 - (select gems from wallets where character_id = :'tid'), :gd0 - (select gold from wallets where character_id = :'tid'));
 reset role;
 insert into r select 't13_preco_khazad', city_sell_mult(c, t)::text from characters c, item_templates t where c.id = :'tid' and t.id = 'barra_ferro';
 insert into r select 't13_refino_khazad', (city_bonus(c, 'refino'))::text from characters c where c.id = :'tid';

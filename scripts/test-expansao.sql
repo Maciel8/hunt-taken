@@ -54,7 +54,7 @@ insert into r select 'list_stack', (list_stack('barra_ferro',60,5,1000,'gold') i
 reset role;
 select (select id from market_listings where seller_character_id = (select id from characters where name='Testador') and status='aberto' and item_id is null order by created_at desc limit 1) as lid \gset
 set local role authenticated;
-reset role; update wallets set gold = 100000, gems = 5000 where character_id = :'bid'; set local role authenticated;
+reset role; update wallets set gold = 100000, gems = 5000 where character_id = :'bid'; update market_listings set release_at = now() - interval '10 s' where id = :'lid'; set local role authenticated;   -- passa a retenção de 2 min
 select set_config('request.jwt.claims', json_build_object('sub', :'buid', 'role', 'authenticated')::text, true);
 select buy_listing(:'lid') is not null;
 reset role; insert into r select 'buy_stack', (select qty::text from inventory_stacks where character_id = :'bid' and template_id = 'barra_ferro' and purity = 60); set local role authenticated;
@@ -113,6 +113,7 @@ reset role; update characters set level = 120 where name = 'Testador'; select st
 insert into r select 'viagem', (travel_world(2) -> 'world' ->> 'name');
 insert into r select 'chefes_mundo2', (select string_agg(x ->> 'name', ', ') from jsonb_array_elements(world_boss_action('lista')) x);
 -- caça no mundo 2 (2 h)
+reset role; update characters set x = (select (rect->>'x')::int + (rect->>'w')::int / 2 from hunts where id = 'lobos'), y = (select (rect->>'y')::int + (rect->>'h')::int / 2 from hunts where id = 'lobos'), pos_at = now() where name = 'Testador'; set local role authenticated;   -- a caçada começa estando nela
 select start_hunt('lobos') is not null;
 reset role; update characters set last_simulated_at = now() - interval '2 hours' where name = 'Testador'; set local role authenticated;
 insert into r select 'sim_mundo2', (select jsonb_build_object('kills', x -> 'kills', 'exp', x -> 'exp', 'gold', x -> 'gold', 'tax', x -> 'tax', 'events', x -> 'events')::text from (select simulate() x) y);

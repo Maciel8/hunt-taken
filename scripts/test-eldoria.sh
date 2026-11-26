@@ -27,6 +27,7 @@ K0=$(rest "character_kills?character_id=eq.$CID&creature_id=eq.lobo&select=kills
 C0=$(rpc get_state | jq '[.stacks[] | select(.t=="couro_cru") | .qty] | add // 0')
 HID=$(rest "hunts?creature_id=eq.lobo&select=id&limit=1" | jq -r '.[0].id')
 rpc return_home >/dev/null 2>&1
+HR=$(rest "hunts?id=eq.$HID&select=rect" | jq -c '.[0].rect'); rest "characters?id=eq.$CID" -X PATCH -d '{"x":'"$(echo "$HR" | jq '.x + (.w/2|floor)')"',"y":'"$(echo "$HR" | jq '.y + (.h/2|floor)')"',"pos_at":"'"$(date -u +%Y-%m-%dT%H:%M:%SZ)"'"}' >/dev/null   # a caçada começa estando nela
 R=$(rpc start_hunt "{\"p_hunt\":\"$HID\"}"); echo "  start_hunt $HID: $(echo "$R" | jq -c '.message // "ok"' | cut -c1-120)"
 rest "characters?id=eq.$CID" -X PATCH -d '{"last_simulated_at":"'"$(date -u -v-2H +%Y-%m-%dT%H:%M:%SZ)"'"}' >/dev/null
 R=$(rpc simulate); echo "  simulate: $(echo "$R" | jq -c '.message // (.report | {kills, drops: [.drops[]? | select(.mat) | "\(.q)x \(.template)"]})' 2>/dev/null | cut -c1-300)"

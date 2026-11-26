@@ -7,6 +7,7 @@ import { CONT, cities, zoneInfo, zoneKey } from "./continent.js";
 import { OX, OY, ringRadius, HEART, cityInside, regionName } from "./terrain.js";
 import { inHeart, zoneAt as heartZoneAt, regionAt } from "./world.js";
 import { toast, renderAll } from "./ui.js";
+import { travelButtons, bindTravelButtons, TRAVEL_GEMS } from "./travel.js";
 const $ = id => document.getElementById(id);
 export const PV = { view: null, sending: false, lastSent: null, cities: null };
 
@@ -84,14 +85,11 @@ export async function loadCities() { try { PV.cities = await rpc("cities_view");
 export async function openTravel() {
   const list = await loadCities() || cities().map(c => ({ id: c.id, name: c.name, spec: c.spec }));
   const el = $("npcBox");
-  el.innerHTML = `<h3>Viagens</h3><p class="muted">Sai de dentro de uma cidade (anel 1) e chega na praça da outra. Custa 200 gold.</p>
-    <div class="citylist">${list.map(c => `<div class="cityrow"><div><b>${c.name}</b><small>${c.spec || ""}</small>${c.owner ? `<small>Anel 3 dominado por [${c.owner.tag}] ${c.owner.name}</small>` : `<small>Anel 3 sem dono</small>`}</div><button data-go="${c.id}">Viajar</button></div>`).join("")}</div>
+  el.innerHTML = `<h3>Viagens</h3><p class="muted">Duas formas de ir: <b>a pé, grátis</b> (a rota aparece no mapa) ou <b>viagem rápida por ${TRAVEL_GEMS} 💎 diamantes</b> (você confirma antes de pagar).</p>
+    <div class="citylist">${list.map(c => `<div class="cityrow"><div><b>${c.name}</b><small>${c.spec || ""}</small>${c.owner ? `<small>Anel 3 dominado por [${c.owner.tag}] ${c.owner.name}</small>` : `<small>Anel 3 sem dono</small>`}</div><div class="mv-actions">${travelButtons("city", c.id, "A pé")}</div></div>`).join("")}</div>
     <div class="talkopts"><button data-close-npc="1">Fechar</button></div>`;
   $("npcModal").hidden = false;
-  el.querySelectorAll("[data-go]").forEach(b => b.onclick = async () => { b.disabled = true;
-    try { const r = await rpc("travel_city", { p_city: b.dataset.go }); PV.view = { ...PV.view, ...r }; const p = S.p; p.x = r.x; p.y = r.y; p.path = []; p.task = "idle"; p.target = null;
-      const { cam } = await import("./render.js"); cam.init = false; cam.follow = true; $("npcModal").hidden = true; toast(`Chegou em ${cities().find(c => c.id === r.city)?.name || r.city} (−${r.cost} gold)`); renderAll(); }
-    catch (e) { toast(e.message, true); b.disabled = false; } });
+  bindTravelButtons(el);
 }
 // ---------- mapa do continente (aba Mapa) ----------
 export function drawContinentMap(g, W, H, sel, t) {
@@ -119,12 +117,9 @@ export function cityPanel(id) {
   return `<h4>${c.name}</h4><p class="muted">${c.spec || ""}</p>${prices ? `<p>${prices}</p>` : ""}
     <div class="row"><span>Anel 1</span><small>seguro, sem PvP</small></div><div class="row"><span>Anel 2</span><small>+30% exp, +25% drop · PvP por escolha</small></div><div class="row"><span>Anel 3</span><small>PvP total · +80% exp, +60% loot · elites e depósitos exclusivos</small></div>
     <div class="row"><span>Domínio do anel 3</span><b>${c.owner ? `[${c.owner.tag}] ${c.owner.name}` : "ninguém"}</b></div>
-    <p class="muted">Viagem de dentro de qualquer cidade (anel 1): 200 gold.</p><button class="primary" data-travel="${c.id}" style="width:100%">Viajar pra ${c.name}</button>`;
+    <div class="mv-actions">${travelButtons("city", c.id)}</div>`;
 }
-export function bindCityPanel(root) { const b = root.querySelector("[data-travel]"); if (!b) return; b.onclick = async () => { b.disabled = true;
-  try { const r = await rpc("travel_city", { p_city: b.dataset.travel }); PV.view = { ...PV.view, ...r }; const p = S.p; p.x = r.x; p.y = r.y; p.path = []; p.task = "idle"; p.target = null; p.huntId = null;
-    const { cam } = await import("./render.js"); cam.init = false; cam.follow = true; const ui = await import("./ui.js"); ui.closeModal(); toast(`Chegou em ${cities().find(c => c.id === r.city)?.name || r.city} (−${r.cost} gold)`); renderAll(); }
-  catch (e) { toast(e.message, true); b.disabled = false; } }; }
+export function bindCityPanel(root) { bindTravelButtons(root); }
 
 // ---------- barqueiro: travessia da lagoa e viagem entre portos/lagoas ----------
 const boatCost = (a, b) => a.lake && a.lake === b.lake ? 15 : Math.max(50, Math.min(250, Math.round(50 + Math.hypot(a.x - b.x, a.y - b.y) / 40)));

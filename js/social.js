@@ -78,7 +78,7 @@ function goQuest(d) {
     if (p.task === "hunt" && huntAt(p.x, p.y)?.id === i.hunt.id) return toast(`Você já está caçando em ${i.hunt.name}.`);
     p.manual = false; p.pendingGather = null; goHunt(i.hunt.id); return;
   }
-  act(() => api.startHunt(i.hunt.id)).then(st => { if (st) { goHunt(i.hunt.id); toast(`Indo caçar em ${i.hunt.name}`); } });
+  import("./travel.js").then(t => t.walkRoute("hunt", i.hunt.id));   // vai a pé; a caçada começa ao chegar
 }
 function goGiver(d) {
   const n = NPCS.find(x => x.title === d.giver && x.y < 200); if (!n) return;

@@ -18,9 +18,26 @@ export function destOf(kind, id) {
 }
 const toastUi = async (msg, bad) => { const { toast } = await import("./ui.js"); toast(msg, bad); };
 
-// viagem rápida (diamantes): confirmação no botão; o servidor valida saldo e destino numa transação só
+// aviso de cobrança: mostra custo, saldo e saldo depois; só cobra se a pessoa confirmar (o servidor cobra só se a viagem acontecer)
+function confirmPay(label) {
+  return new Promise(res => {
+    const gems = Number(S.gems || 0), ok = gems >= TRAVEL_GEMS, el = document.createElement("div"); el.className = "paywall";
+    el.innerHTML = `<div class="paybox"><h3>Viagem rápida paga</h3><p>Ir até <b>${label}</b> na hora custa <b class="cost">${TRAVEL_GEMS} 💎 diamantes</b>.</p>
+      <div class="payrows"><div><span>Seus diamantes</span><b>${gems} 💎</b></div><div class="${ok ? "" : "bad"}"><span>Depois da viagem</span><b>${gems - TRAVEL_GEMS} 💎</b></div></div>
+      <p class="muted">Quer economizar? Ir a pé é grátis: a rota aparece no mapa.</p>
+      <div class="payact"><button data-a="walk">Ir a pé (grátis)</button><button class="primary" data-a="pay" ${ok ? "" : "disabled"}>${ok ? `Pagar ${TRAVEL_GEMS} 💎 e viajar` : "Diamantes insuficientes"}</button></div>
+      <button class="x paywall-x" data-a="no">×</button></div>`;
+    document.body.appendChild(el);
+    const done = v => { el.remove(); res(v); };
+    el.onclick = e => { const b = e.target.closest("[data-a]"); if (b) done(b.dataset.a); else if (e.target === el) done("no"); };
+  });
+}
+// viagem rápida (diamantes): o servidor valida saldo e destino numa transação só
 export async function fastTravel(kind, id, btn) {
   const d = destOf(kind, id); if (!d) return;
+  const choice = await confirmPay(d.label);
+  if (choice === "walk") return walkRoute(kind, id);
+  if (choice !== "pay") return;
   if (btn) btn.disabled = true;
   try {
     const st = await rpc("fast_travel", { p_kind: kind, p_target: id }); applyServer(st);
@@ -41,6 +58,14 @@ export async function walkRoute(kind, id) {
   if (kind === "hunt") goHunt(id); else { p.huntId = null; p.task = "walk"; p.path = path; p.target = null; }
   const ui = await import("./ui.js"); ui.closeModal(); document.getElementById("npcModal").hidden = true; ui.toast(`Rota até ${d.label}: siga a linha dourada (WASD ou clique no caminho)`);
   return true;
+}
+// ir a pé até um ponto (vilas do coração)
+export async function walkPoint(x, y, label) {
+  const p = S.p, path = findPath(p.x, p.y, x, y);
+  if (!path) { toastUi(`Não existe rota a pé até ${label}.`, true); return false; }
+  ROUTE.on = true; ROUTE.x = x; ROUTE.y = y; ROUTE.label = label; ROUTE.kind = "point"; ROUTE.id = null;
+  ROUTE.stops = [...path.map(q => [q.x, q.y]), ...((path.rest && path.rest.stops) || []).map(s => [s.x, s.y])];
+  p.huntId = null; p.task = "walk"; p.path = path; p.target = null; toastUi(`Rota até ${label}: siga a linha dourada`); return true;
 }
 export function cancelRoute() { ROUTE.on = false; ROUTE.stops = []; }
 // a cada quadro: tira os pontos que já ficaram pra trás e encerra ao chegar
@@ -70,8 +95,8 @@ export function drawRoute(g, t) {
 }
 // botões das duas opções (usados no mapa, no painel de caça e nos covis)
 export const travelButtons = (kind, id, walkLabel = "Ir a pé (grátis)") =>
-  `<button class="primary" data-fast="${kind}:${id}">Viagem rápida · ${TRAVEL_GEMS} 💎</button><button data-walk="${kind}:${id}">${walkLabel}</button>`;
-export function bindTravelButtons(root) {
-  root.querySelectorAll("[data-fast]").forEach(b => b.onclick = () => { const [k, ...r] = b.dataset.fast.split(":"); fastTravel(k, r.join(":"), b); });
-  root.querySelectorAll("[data-walk]").forEach(b => b.onclick = () => { const [k, ...r] = b.dataset.walk.split(":"); walkRoute(k, r.join(":")); });
+  `<button data-walk="${kind}:${id}" class="walkbtn">🥾 ${walkLabel}</button><button class="primary paybtn" data-fast="${kind}:${id}" title="Viagem paga: ${TRAVEL_GEMS} diamantes">⚡ Viagem rápida <span class="paytag">PAGA · ${TRAVEL_GEMS} 💎</span></button>`;
+export function bindTravelButtons(root, after) {
+  root.querySelectorAll("[data-fast]").forEach(b => b.onclick = () => { const [k, ...r] = b.dataset.fast.split(":"); after?.(); fastTravel(k, r.join(":"), b); });
+  root.querySelectorAll("[data-walk]").forEach(b => b.onclick = () => { const [k, ...r] = b.dataset.walk.split(":"); after?.(); walkRoute(k, r.join(":")); });
 }

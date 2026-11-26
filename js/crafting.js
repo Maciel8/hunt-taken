@@ -1,4 +1,4 @@
-// Fabricação simples: uma tela só. Esquerda: o que você tem (materiais com quantidade). Direita: o que dá pra fabricar,
+// Fabricação simples: uma tela só, só receitas diretas (minério + carvão → barra; barras + madeira → arma). Esquerda: o que você tem (materiais com quantidade). Direita: o que dá pra fabricar,
 // com cada material "precisa × / tem" (verde = ok, vermelho = falta), nível do ofício, ferramenta e gold.
 // O botão só acende com tudo atendido. Usa as receitas e o servidor de sempre (craft_start / craft_finish);
 // material por categoria é escolhido sozinho (o que você tem mais), técnica "segura".
@@ -13,7 +13,7 @@ const tname = id => CAT.templates[id]?.name || ITEMS[id]?.name || id;
 const ticon = id => { const n = CAT.templates[id]?.icon || ITEMS[id]?.icon || "orb"; return `<img class="ic" src="assets/sprites/${n}.png" alt="" onerror="this.style.visibility='hidden'">`; };
 const CATN = { barra: "Barra (qualquer)", madeira: "Madeira (qualquer)", gema: "Gema lapidada (qualquer)", couro: "Couro (qualquer)", minerio: "Minério (qualquer)" };
 const PART = { lamina: "Lâmina", guarda: "Guarda", empunhadura: "Empunhadura", pomo: "Pomo", cabeca: "Cabeça de picareta", cabeca_machado: "Cabeça de machado", cabeca_foice: "Lâmina de foice" };
-const KIND = [["todas", "Tudo"], ["refino", "Refino"], ["componente", "Componentes"], ["equipamento", "Equipamentos"], ["consumivel", "Consumíveis"], ["montagem", "Montagem"]];
+const KIND = [["todas", "Tudo"], ["refino", "Barras e materiais"], ["equipamento", "Armas, armaduras e ferramentas"], ["consumivel", "Poções"]];
 let F = { kind: "todas", onlyReady: false, q: "" };
 
 const have = t => S.stacks.filter(s => s.t === t).reduce((a, s) => a + s.qty, 0);
@@ -37,7 +37,7 @@ function evaluate(r) {
 const outName = r => r.output?.t ? tname(r.output.t) : r.output?.part ? (PART[r.output.part] || "peça") : r.output?.pots ? `${r.output.pots} poções` : "a mesma barra, mais pura";
 
 export function renderCrafting(box, only) {
-  const recs = CAT.recipes.filter(r => r.kind !== "modular" && (!only || only.includes(r.profession_id)) && (F.kind === "todas" || r.kind === F.kind) && (!F.q || (r.name + " " + outName(r)).toLowerCase().includes(F.q.toLowerCase())));
+  const recs = CAT.recipes.filter(r => r.kind !== "modular" && r.simple !== false && (!only || only.includes(r.profession_id)) && (F.kind === "todas" || r.kind === F.kind) && (!F.q || (r.name + " " + outName(r)).toLowerCase().includes(F.q.toLowerCase())));
   const evals = recs.map(r => ({ r, e: evaluate(r) })).filter(x => !F.onlyReady || x.e.ok).sort((a, b) => (b.e.ok - a.e.ok) || (a.r.req_level - b.r.req_level));
   const mats = Object.values(S.stacks.reduce((m, s) => { (m[s.t] = m[s.t] || { t: s.t, qty: 0 }).qty += s.qty; return m; }, {})).sort((a, b) => tname(a.t).localeCompare(tname(b.t)));
   const now = Date.now();
