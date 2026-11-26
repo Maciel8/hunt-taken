@@ -5,7 +5,7 @@ import { S, P, newPlayer, spawnAll, playerTick, monTick, applyServer, log, fmt, 
 import { loadAssets, A } from "./art.js";
 import { loadContinent, registerContent } from "./continent.js";
 import { startPositionReports, playerAt, clickPlayer, loadCities } from "./cities.js";
-import { render, resize, tileAt, cv, cam, miniHit, viewSize, zoomBy, screenAt, hover } from "./render.js";
+import { render, resize, tileAt, cv, cam, miniHit, miniWheel, viewSize, zoomBy, screenAt, hover } from "./render.js";
 import { renderAll, renderFeed, bindUI, showCreate, showReports, toast, showHuntPop, hideHuntPop, act, openModal } from "./ui.js";
 import { showAuth, showNewPassword } from "./authui.js";
 import { api, auth } from "./net.js";
@@ -106,7 +106,7 @@ function bindCanvas() {
     if (walkTo(x, y)) { if (inVila(x, y)) toast("Indo pra Vila de Arken. Zona segura."); } else toast("Não dá pra andar até aí.", true);
   };
   cv.addEventListener("pointerup", up); cv.addEventListener("pointercancel", up);
-  cv.addEventListener("wheel", ev => { ev.preventDefault(); const s = screenAt(ev); zoomBy(Math.exp(-ev.deltaY * .0015), s.x, s.y); }, { passive: false });
+  cv.addEventListener("wheel", ev => { ev.preventDefault(); if (miniWheel(ev)) return; const s = screenAt(ev); zoomBy(Math.exp(-ev.deltaY * .0015), s.x, s.y); }, { passive: false });
   document.getElementById("btnZoomIn").addEventListener("click", () => zoomBy(1.25));
   document.getElementById("btnZoomOut").addEventListener("click", () => zoomBy(.8));
 }

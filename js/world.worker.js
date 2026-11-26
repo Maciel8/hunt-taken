@@ -38,6 +38,8 @@ function groundPx(name, gx, gy, px, py) {
   const f = 1 + n1 * .22 + n2 * .14 + sp * .1;
   return [m[0] * k[0] * f, m[1] * k[1] * f, m[2] * k[2] * f];
 }
+// 0 colado no coração → 1 a partir de 28 tiles (com franja irregular)
+function heartNear(x, y) { const dx = Math.max(-x, 0, x - 300), dy = Math.max(-y, 0, y - 200), d = Math.hypot(dx, dy) + (vnoise(x / 6, y / 6, 611) - .5) * 8; return Math.max(0, Math.min(1, d / 28)); }
 function texPx(name, x, y) { const t = TEX[name] || TEX.grass; const tx = ((x % t.w) + t.w) % t.w, ty = ((y % t.h) + t.h) % t.h, i = (ty * t.w + tx) * 4; return [t.data[i], t.data[i + 1], t.data[i + 2]]; }
 
 // ---------- desenho de um pedaço ----------
@@ -60,7 +62,8 @@ function renderChunk(cx, cy) {
       const fx = px / PX, fy = py / PX; const own = tileOf(fx, fy);
       // estrada, ponte, cidade e docas mantêm borda mais firme (só leve ondulação)
       const firm = own === B.ROAD || own === B.BRIDGE || own === B.CITY || own === B.DOCK;
-      const b = firm ? tileOf(fx + ox * .25, fy + oy * .25) : tileOf(fx + ox, fy + oy);
+      let b = firm ? tileOf(fx + ox * .25, fy + oy * .25) : tileOf(fx + ox, fy + oy);
+      if (b === B.HEART && own !== B.HEART) b = own;   // a deformação não pode abrir buraco na borda do coração
       const o = (py * N + px) * 4; let r, g, bl, a = 255;
       const wpx = (cx * N + px) * 2, wpy = (cy * N + py) * 2;    // coordenada da textura (mesma escala do coração)
       if (b === B.HEART) { a = 0; r = g = bl = 0; }
@@ -72,6 +75,9 @@ function renderChunk(cx, cy) {
         if (b !== B.MURKY && hashTile(wpx >> 3, wpy >> 3, 7) > .992) { const wi = ((py >> 1) * (N / 2) + (px >> 1)) * 4; wd[wi] = wd[wi + 1] = wd[wi + 2] = 255; wd[wi + 3] = 150; }
       } else if (b === B.LAVA) { const h = vnoise((gx0 + fx) * 2.5, (gy0 + fy) * 2.5, 517); r = 200 + h * 55; g = 70 + h * 120; bl = 20; }
       else if (b === B.BRIDGE || b === B.DOCK) { const plank = (Math.floor(wpy / 6) % 2) ? 0 : 14; r = 128 + plank; g = 90 + plank; bl = 56 + plank / 2; if (wpy % 6 === 0) { r -= 30; g -= 26; bl -= 18; } }
+      else if (TEX_OF[b] && heartNear(cx * CHUNK + fx, cy * CHUNK + fy) < 1 && b !== B.ROAD && b !== B.CITY) {
+        const k = heartNear(cx * CHUNK + fx, cy * CHUNK + fy), t1 = texPx(TEX_OF[b], wpx, wpy), t2 = groundPx(TEX_OF[b], gx0 + fx, gy0 + fy, wpx >> 1, wpy >> 1);
+        r = t1[0] * (1 - k) + t2[0] * k; g = t1[1] * (1 - k) + t2[1] * k; bl = t1[2] * (1 - k) + t2[2] * k; }
       else { [r, g, bl] = (b === B.CITY || b === B.CLIFF || b === B.MOUNTAIN || b === B.PEAK) ? texPx(TEX_OF[b], wpx >> 1, wpy >> 1) : groundPx(TEX_OF[b] || "grass", gx0 + fx, gy0 + fy, wpx >> 1, wpy >> 1);
         if (b === B.PEAK) { r *= .78; g *= .78; bl *= .8; }
         // decoração assada no chão: tufos, flores, pedrinhas, brilho na neve
