@@ -124,7 +124,7 @@ const HUNT_RULES = {
 export const HUNTS = GROUNDS.map(g => { const rule = HUNT_RULES[g.id], cx = Math.round(g.x / 4), cy = Math.round(g.y / 4), r = rule.r;
   return { id: g.id, name: g.name, why: g.why, ...rule, cx, cy, rect: { x: cx - r, y: cy - r, w: 2 * r + 1, h: 2 * r + 1 }, door: [cx, cy - r] }; });
 export const TOWNS = PLACES.map(p => ({ ...p, tx: Math.round(p.x / 4), ty: Math.round(p.y / 4) }));
-export const CAPITAL = { x: 33, y: 22, w: 40, h: 28 };   // área murada da Vila de Arken
+export const CAPITAL = { x: 14, y: 9, w: 74, h: 48 };   // área murada expandida da Vila de Arken
 export const DEPOT = { x: 55, y: 38 };
 export const HOME = { x: 52, y: 42 };
 

@@ -7,6 +7,7 @@ import { api } from "./net.js";
 import { act, toast, renderAll, openModal } from "./ui.js";
 import { A } from "./art.js";
 import { CAT, renderWorkshop } from "./progress.js";
+import { renderCrafting } from "./crafting.js";
 
 const $ = id => document.getElementById(id);
 const esc = t => String(t ?? "").replace(/[&<>"']/g, c => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]));
@@ -34,7 +35,7 @@ function draw(box) {
     <div class="tabs2">${sh.services.map(s => `<button data-st="${s}" class="${SH.tab === s ? "on" : ""}">${SVC[s] || s}</button>`).join("")}</div><div id="shopBody"></div>`;
   box.querySelectorAll("[data-st]").forEach(b => b.onclick = () => { SH.tab = b.dataset.st; draw(box); });
   const el = $("shopBody");
-  ({ buy: drawBuy, sell: drawSell, modular: drawForge, craft: el2 => renderWorkshop(el2, sh.professions), repair: drawRepair, process: drawProcess, storage: drawStorage, enchant: drawEnchant, market: () => openModal("market") })[SH.tab](el, box);
+  ({ buy: drawBuy, sell: drawSell, modular: drawForge, craft: el2 => renderCrafting(el2, sh.professions), repair: drawRepair, process: drawProcess, storage: drawStorage, enchant: drawEnchant, market: () => openModal("market") })[SH.tab](el, box);
 }
 async function refresh(box) { try { SH.data = await api.shopView(SH.id); } catch (e) { } draw(box); }
 

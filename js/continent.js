@@ -31,7 +31,7 @@ export function buildHeartLod(W) {
     d[o] = col[0] * fv; d[o + 1] = col[1] * fv; d[o + 2] = col[2] * fv; d[o + 3] = 255; }
   g.putImageData(im, 0, 0); return CONT.heartLod = c;
 }
-function texData(tex) { const out = {}; for (const k of ["grass", "grass_dark", "grass_gold", "sand", "cobble", "plaza", "swamp", "swamp_red", "rock", "stone_dark", "earth", "dirt", "snow", "ruins", "water", "lava", "bridge"]) { const im = tex[k]; if (!im) continue; const w = im.width, h = im.height, c = document.createElement("canvas"); c.width = w; c.height = h; const g = c.getContext("2d"); g.drawImage(im, 0, 0); out[k] = { w, h, data: g.getImageData(0, 0, w, h).data }; } return out; }
+function texData(tex) { const out = {}; for (const k of ["grass", "grass_dark", "grass_gold", "sand", "solkar_sand", "cobble", "cobble_v3", "khazad_floor", "plaza", "swamp", "swamp_red", "rock", "stone_dark", "earth", "dirt", "snow", "ruins", "water", "lava", "bridge"]) { const im = tex[k]; if (!im) continue; const w = im.width, h = im.height, c = document.createElement("canvas"); c.width = w; c.height = h; const g = c.getContext("2d"); g.drawImage(im, 0, 0); out[k] = { w, h, data: g.getImageData(0, 0, w, h).data }; } return out; }
 export async function loadContinent(texSrc, version) {
   try { CONT.tex0 = texSrc; const tex = texData(texSrc);
     const net = await (await fetch("assets/world-net.json", { cache: "no-cache" })).json();
@@ -52,7 +52,13 @@ export function registerContent(net = CONT.net) {
     MONS[m.id] = { name: m.name, lvl: m.lvl, hp: Math.round(60 + Math.pow(m.lvl, 1.5) * 5 * k), atk: Math.round((8 + m.lvl * 1.6) * (1 + (k - 1) * .25)), def: Math.round(m.lvl * .5), exp: Math.round((10 + Math.pow(m.lvl, 1.7) * 2) * k), gold: [m.lvl, m.lvl * 2 + 2], speed: 1, drop: null, sprite: m.sprite, tint: m.tint, cat: m.cat }; }
   for (const h of net.hunts) if (!HUNTS.find(x => x.id === h.id)) { const r = h.r;
     HUNTS.push({ id: h.id, name: h.name, why: `${h.region || ""} · ${["Zona Segura", "Fronteira Disputada", "Zona Vermelha"][h.ring - 1]} de ${net.cities.find(c => c.id === h.city).name}`, region: h.city, mon: h.mon, boss: h.boss || null, spawns: h.ring === 3 ? 6 : h.ring === 2 ? 6 : 5, respawn: 14000, r, cx: h.cx, cy: h.cy, rect: { x: h.cx - r, y: h.cy - r, w: 2 * r + 1, h: 2 * r + 1 }, door: [h.cx, h.cy - r], ring: h.ring, city: h.city, zone: ["anel1", "anel2", "anel3"][h.ring - 1] || "anel3", wild: true, subregion: h.region, group: h.group }); }
-  for (const c of net.cities) if (!c.heart) for (const n of CITY_NPCS[c.id] || []) { const [dx, dy, voc, title, extra] = n; if (!NPCS.find(q => q.title === title && q.city === c.id)) NPCS.push({ x: c.x + dx, y: c.y + dy, voc, title, king: "grey", city: c.id, ...extra, dir: "down", moving: false, anim: 0, npc: true }); }
+  for (const c of net.cities) if (!c.heart) {
+    const list = (c.npcs && c.npcs.length) ? c.npcs : (CITY_NPCS[c.id] || []).map(([dx, dy, voc, title, extra]) => ({ x: c.x + dx, y: c.y + dy, voc, title, ...(extra || {}) }));
+    for (const n of list) {
+      if (!NPCS.find(q => q.title === n.title && q.city === c.id && Math.hypot(q.x - n.x, q.y - n.y) < 12))
+        NPCS.push({ king: "grey", city: c.id, ...n, dir: "down", moving: false, anim: 0, npc: true });
+    }
+  }
   for (const b of net.boats || []) if (!NPCS.find(q => q.port === b.id)) NPCS.push({ x: b.npc[0], y: b.npc[1], voc: "mercador", title: "Barqueiro", king: "grey", act: "boat", port: b.id, dir: "down", moving: false, anim: 0, npc: true });
   ZONES.anel1 ||= { name: "Zona Segura", desc: "Território nível 1: monstros iniciais da região, PvP 100% desativado.", risk: "Sem risco", color: "#7fd07a", tint: null };
   ZONES.anel2 ||= { name: "Fronteira Disputada — PvP Opcional", desc: "Território nível 2: +30% exp e +25% drop. PvP só pra quem ligar (botão no topo): +20% exp e +15% loot; desligar exige 60 s sem lutar.", risk: "Médio", color: "#f0b040", tint: null };
@@ -214,14 +220,22 @@ export function drawContinent(g, ox, oy, WW, WH, t, zoom = 1) {
   // pré-carrega a volta
   for (let cy = cy0 - 1; cy <= cy1 + 1; cy++) for (let cx = cx0 - 1; cx <= cx1 + 1; cx++) if (cy < cy0 || cy > cy1 || cx < cx0 || cx > cx1) request(tier, cx, cy);
 }
-// navios ancorados no porto (desenho simples, balançando)
-export function drawShips(g, t) { if (!CONT.ready) return; for (const p of CONT.net.ports) for (const [i, s] of p.ships.entries()) { const x = (s[0] + .5) * T, y = (s[1] + .5) * T + Math.sin(t * 1.4 + i) * 3;
-  g.fillStyle = "rgba(0,0,0,.25)"; g.beginPath(); g.ellipse(x, y + 22, 70, 14, 0, 0, 6.283); g.fill();
-  g.fillStyle = "#5e3b1e"; g.beginPath(); g.moveTo(x - 72, y); g.lineTo(x + 72, y); g.lineTo(x + 52, y + 22); g.lineTo(x - 56, y + 22); g.closePath(); g.fill();
-  g.fillStyle = "#7a4e28"; g.fillRect(x - 70, y - 4, 140, 6); g.fillStyle = "#3a2412"; g.fillRect(x - 3, y - 96, 6, 96); g.fillRect(x - 40, y - 66, 4, 66);
-  g.fillStyle = "#efe6cf"; g.beginPath(); g.moveTo(x + 4, y - 92); g.quadraticCurveTo(x + 46, y - 60, x + 4, y - 18); g.closePath(); g.fill();
-  g.beginPath(); g.moveTo(x - 36, y - 62); g.quadraticCurveTo(x - 10, y - 44, x - 36, y - 20); g.closePath(); g.fill();
-  g.fillStyle = "#b8322c"; g.fillRect(x - 2, y - 106, 16, 9); } }
+// navios ancorados no porto (sprites pixel art balançando suavemente na água)
+let _artMod = null;
+export function drawShips(g, t) {
+  if (!CONT.ready) return;
+  if (!_artMod && typeof window !== "undefined") { _artMod = {}; import("./art.js").then(m => { _artMod = m; }).catch(() => { }); }
+  for (const p of CONT.net.ports) for (const [i, s] of (p.ships || []).entries()) {
+    const x = (s[0] + .5) * T, y = (s[1] + .5) * T + Math.sin(t * 1.4 + i * 1.3) * 2.5;
+    const spName = s[2] || (i % 3 === 0 ? "valen_galleon" : i % 3 === 1 ? "valen_sailboat" : "valen_rowboat");
+    const sc = s[3] || (spName === "valen_galleon" ? 1.35 : spName === "valen_sailboat" ? 1.15 : 1.0);
+    g.fillStyle = "rgba(8,20,38,.28)"; g.beginPath(); g.ellipse(x, y + 12, spName === "valen_galleon" ? 66 : 42, 12, 0, 0, 6.283); g.fill();
+    g.strokeStyle = "rgba(225,244,255,.32)"; g.lineWidth = 2; g.beginPath(); g.ellipse(x, y + 12, (spName === "valen_galleon" ? 72 : 46) + Math.sin(t * 1.8 + i) * 3, 14, 0, 0, 6.283); g.stroke();
+    if (_artMod && _artMod.blit && _artMod.blit(g, spName, x, y + 20, sc, i % 2 === 1)) continue;
+    g.fillStyle = "#5e3b1e"; g.beginPath(); g.moveTo(x - 62, y); g.lineTo(x + 62, y); g.lineTo(x + 46, y + 18); g.lineTo(x - 48, y + 18); g.closePath(); g.fill();
+    g.fillStyle = "#efe6cf"; g.beginPath(); g.moveTo(x + 4, y - 82); g.quadraticCurveTo(x + 42, y - 52, x + 4, y - 16); g.closePath(); g.fill();
+  }
+}
 // minimapa fora do coração: recorte do mapa-múndi em volta do jogador
 export function drawMiniOverview(g, mx, my, w, h, px, py, span = 900) {
   if (!CONT.overview) return null; const sx = (px + TR.OX - span / 2) / TR.OVT, sy = (py + TR.OY - span * h / w / 2) / TR.OVT, sw = span / TR.OVT, sh = span * h / w / TR.OVT;

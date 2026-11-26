@@ -176,7 +176,7 @@ export function playerTick() {
   const hh = p.huntId && findHunt(p.huntId);
   if (!hh) { p.task = "idle"; return; }
   if (p.task === "goto") {
-    if (huntAt(p.x, p.y)?.id === hh.id && dist(p, { x: hh.cx, y: hh.cy }) < hh.r * .8) { p.task = "hunt"; p.path = []; log(`Chegou em ${hh.name}.`); emit("ui"); return; }
+    if (huntAt(p.x, p.y)?.id === hh.id && dist(p, { x: hh.cx, y: hh.cy }) < hh.r * .8) { p.task = "hunt"; p.path = []; log(`Chegou em ${hh.name}.`); if (S.server && S.session?.hunt_id !== hh.id) emit("arrive", hh.id); emit("ui"); return; }
     if (!p.path.length) {
       // não desiste: tenta outros pontos da área, desencosta de parede e tenta de novo a cada 2 s
       if (p.gotoWait && performance.now() < p.gotoWait) return;

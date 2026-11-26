@@ -13,9 +13,16 @@ export const inRect = (r, x, y) => x >= r.x && y >= r.y && x < r.x + r.w && y < 
 export const R = { CAMPOS: 0, FLORESTA: 1, PANTANO: 2, MINAS: 3, ROCHA: 4, MONTANHAS: 5, RUINAS: 6, VILA: 7 };
 const REGION_ID = ["campos", "floresta", "pantano", "minas", "minas", "montanhas", "ruinas", "vila"];
 export const U = { region: new Uint8Array(DW * DH), water: new Uint8Array(DW * DH), road: new Uint8Array(DW * DH), field: new Uint8Array(DW * DH), bridge: new Uint8Array(DW * DH), clearing: new Uint8Array(DW * DH) };
-export const VILA = { cx: 210, cy: 140, rx: 80, ry: 56 };       // muralha da vila em unidades
-// ruas da vila (unidades): avenida leste-oeste, rua norte-sul até o castelo, anel interno e praça com fonte
-export const VILA_ST = { lines: [[[130, 140], [290, 140]], [[212, 118], [212, 196]]], ring: { cx: 210, cy: 146, rx: 46, ry: 30 }, plaza: { cx: 212, cy: 156, r: 20 }, w: 8 };
+export const VILA = { cx: 204, cy: 132, rx: 148, ry: 96 };       // muralha expandida da Vila de Arken (74x48 tiles)
+// ruas da vila (unidades): avenidas cardeais, dois anéis internos, grande praça da fonte e pátio real
+export const VILA_ST = {
+  lines: [[[56, 132], [352, 132]], [[204, 36], [204, 228]], [[130, 82], [282, 82]], [[120, 182], [292, 182]]],
+  ring: { cx: 204, cy: 138, rx: 72, ry: 46 },
+  ring2: { cx: 204, cy: 132, rx: 118, ry: 74 },
+  plaza: { cx: 208, cy: 160, r: 28 },
+  plaza2: { cx: 204, cy: 88, r: 22 },
+  w: 8,
+};
 export const FIELDS = [];
 const CLEARINGS = [[540, 470, 34], [330, 400, 26], [620, 310, 50], [790, 300, 60], [200, 620, 40]];
 
@@ -51,7 +58,9 @@ function rasterize() {
   for (const r of ROADS) { path(r); g.stroke(); }
   g.lineWidth = VILA_ST.w; for (const l of VILA_ST.lines) { g.beginPath(); g.moveTo(l[0][0], l[0][1]); g.lineTo(l[1][0], l[1][1]); g.stroke(); }
   g.beginPath(); g.ellipse(VILA_ST.ring.cx, VILA_ST.ring.cy, VILA_ST.ring.rx, VILA_ST.ring.ry, 0, 0, 6.283); g.stroke();
+  if (VILA_ST.ring2) { g.beginPath(); g.ellipse(VILA_ST.ring2.cx, VILA_ST.ring2.cy, VILA_ST.ring2.rx, VILA_ST.ring2.ry, 0, 0, 6.283); g.stroke(); }
   g.fillStyle = "#fff"; g.beginPath(); g.arc(VILA_ST.plaza.cx, VILA_ST.plaza.cy, VILA_ST.plaza.r, 0, 6.283); g.fill();
+  if (VILA_ST.plaza2) { g.beginPath(); g.arc(VILA_ST.plaza2.cx, VILA_ST.plaza2.cy, VILA_ST.plaza2.r, 0, 6.283); g.fill(); }
   read(U.road, r => r > 100 ? 1 : 0);
   findBridges();
   g.fillStyle = "#000"; g.fillRect(0, 0, DW, DH); g.fillStyle = "#fff";
@@ -127,28 +136,68 @@ export const putObj = o => put(o);
 const free = (x, y, fw = 1, fh = 1) => { for (let dy = 0; dy < fh; dy++) for (let dx = 0; dx < fw; dx++) { const xx = x - Math.floor((fw - 1) / 2) + dx, yy = y - dy; if (xx < 1 || yy < 1 || xx >= MW - 1 || yy >= MH - 1 || occupied[idx(xx, yy)] || block[idx(xx, yy)] || isRoadTile(xx, yy)) return false; } return true; };
 
 function buildTowns() {
-  // Vila de Arken: muralha em elipse com quatro portões, castelo ao norte, casas, praça e NPCs
+  // Vila de Arken expandida (74×48 tiles): muralha poligonal de pedra clara, 4 portões, cidadela real ao norte,
+  // grande praça da fonte, bairro artesanal a oeste, bairro mercantil/residencial a leste e bosques internos
   const vx = VILA.cx / UPT, vy = VILA.cy / UPT, rx = VILA.rx / UPT, ry = VILA.ry / UPT;
-  for (let a = 0; a < 6.283; a += .012) {
+  for (let a = 0; a < 6.283; a += .008) {
     const x = Math.round(vx + Math.cos(a) * rx), y = Math.round(vy + Math.sin(a) * ry);
-    const gate = [0, 1.5708, 3.1416, 4.7124].some(g => Math.abs(((a - g + 9.42) % 6.283) - 3.1416) > 2.95);
+    const gate = [0, 1.5708, 3.1416, 4.7124].some(g => Math.abs(((a - g + 9.42) % 6.283) - 3.1416) > 3.01);
     if (gate || occupied[idx(x, y)]) continue;
     put({ x, y, kind: "wall", solid: true });
   }
-  for (const [a, k] of [[0, 1], [1.5708, 1], [3.1416, 1], [4.7124, 1], [.785, 0], [2.356, 0], [3.927, 0], [5.498, 0]]) { const x = Math.round(vx + Math.cos(a) * rx), y = Math.round(vy + Math.sin(a) * ry); put({ x, y, kind: "tower", fw: 2, fh: 2, gate: !!k }); }
-  put({ x: 53, y: 31, kind: "castle", fw: 9, fh: 4 });
-  // casas ao longo das ruas, taverna, banco, forja e mercado em volta da praça
-  const houses = [[38, 33, "house_thatch"], [43, 32, "house"], [63, 32, "house2"], [68, 33, "house_thatch2"], [43, 43, "house"], [63, 43, "house2"], [69, 39, "house_thatch"], [46, 47, "house_thatch2"], [60, 47, "house"], [39, 44, "house2"], [67, 45, "house_thatch"]];
-  for (const [x, y, sp] of houses) put({ x, y, kind: "building", sprite: sp, fw: 3, fh: 2 });
-  put({ x: 38, y: 39, kind: "building", sprite: "tavern", fw: 4, fh: 2, door: "taverna" });
-  put({ x: 59, y: 38, kind: "building", sprite: "house2", fw: 3, fh: 2, sign: "Banco" });
-  put({ x: 45, y: 37, kind: "building", sprite: "anvil_forge", fw: 2, fh: 1 });
-  put({ x: 53, y: 39, kind: "building", sprite: "fountain", fw: 2, fh: 2 });
-  for (const [x, y] of [[48, 41], [50, 42], [56, 42], [58, 41]]) put({ x, y, kind: "building", sprite: "stall", fw: 2, fh: 1 });
-  for (const [x, y] of [[50, 37], [56, 37], [53, 44], [47, 35], [59, 35]]) put({ x, y, kind: "building", sprite: "lantern_fence", fw: 1, fh: 1, solid: false });
-  for (const [x, y] of [[49, 31], [57, 31], [36, 36], [70, 36]]) put({ x, y, kind: "building", sprite: "banner", fw: 1, fh: 1 });
-  // jardins: árvores e canteiros nos espaços livres da vila
-  for (let y = 23; y < 48; y++) for (let x = 34; x < 72; x++) { if (!inVila(x, y) || !free(x, y)) continue; const h = hash(x, y) % 100; if (h < 7) put({ x, y, kind: "tree", sprite: h < 3 ? "oak_small" : "tree_small" }); else if (h < 11) put({ x, y, kind: "building", sprite: "flower_bed", fw: 1, fh: 1, solid: false }); }
+  // torres nos 4 portões + 8 torres de perímetro
+  for (const [a, k] of [[0, 1], [1.5708, 1], [3.1416, 1], [4.7124, 1], [.52, 0], [1.05, 0], [2.09, 0], [2.62, 0], [3.66, 0], [4.19, 0], [5.24, 0], [5.76, 0]]) {
+    const x = Math.round(vx + Math.cos(a) * rx), y = Math.round(vy + Math.sin(a) * ry);
+    put({ x, y, kind: "tower", fw: 2, fh: 2, gate: !!k });
+  }
+  // 1. Distrito Real (Norte): Castelo / Cidadela Real + Quartel + Arsenal + Jardins Reais
+  put({ x: 51, y: 18, kind: "castle", fw: 9, fh: 4, scale: 1.35 });
+  put({ x: 37, y: 19, kind: "building", sprite: "house2", fw: 3, fh: 2, scale: 1.18 });   // Quartel da Guarda
+  put({ x: 65, y: 19, kind: "building", sprite: "house2", fw: 3, fh: 2, scale: 1.18 });   // Conselho Real
+  put({ x: 31, y: 24, kind: "building", sprite: "barn", fw: 4, fh: 2, scale: 1.08 });     // Estábulo Real
+  put({ x: 71, y: 24, kind: "building", sprite: "house", fw: 3, fh: 2, scale: 1.12 });    // Capela da Luz
+  put({ x: 42, y: 25, kind: "building", sprite: "house_thatch", fw: 3, fh: 2, scale: 1.05 });
+  put({ x: 60, y: 25, kind: "building", sprite: "house_thatch2", fw: 3, fh: 2, scale: 1.05 });
+  for (const [x, y] of [[44, 19], [58, 19], [46, 25], [56, 25], [18, 32], [84, 32], [49, 54], [53, 54]]) put({ x, y, kind: "building", sprite: "banner", fw: 1, fh: 1 });
+  // 2. Grande Praça da Fonte (Centro) & Comércio
+  put({ x: 52, y: 39, kind: "building", sprite: "fountain", fw: 2, fh: 2, scale: 1.38 });
+  put({ x: 36, y: 39, kind: "building", sprite: "tavern", fw: 4, fh: 2, scale: 1.25, door: "taverna" });
+  put({ x: 59, y: 37, kind: "building", sprite: "house2", fw: 3, fh: 2, scale: 1.18, sign: "Banco" });
+  put({ x: 44, y: 35, kind: "building", sprite: "anvil_forge", fw: 2, fh: 1 });
+  put({ x: 40, y: 35, kind: "building", sprite: "house", fw: 3, fh: 2, scale: 1.1 });     // Ferraria
+  put({ x: 65, y: 36, kind: "building", sprite: "house2", fw: 3, fh: 2, scale: 1.1 });    // Guilda dos Mercadores
+  put({ x: 60, y: 47, kind: "building", sprite: "house", fw: 3, fh: 2, scale: 1.15 });    // Casa de Leilões
+  put({ x: 43, y: 46, kind: "building", sprite: "house_thatch", fw: 3, fh: 2, scale: 1.1 }); // Empório de Arken
+  for (const [x, y] of [[47, 41], [49, 43], [55, 43], [57, 41], [48, 36], [56, 36]]) put({ x, y, kind: "building", sprite: "stall", fw: 2, fh: 1, scale: 1.1 });
+  // 3. Distrito Artesanal (Oeste: x=20..36)
+  const westBld = [
+    [22, 29, "house_thatch", 3, 2], [28, 28, "house", 3, 2], [34, 29, "house2", 3, 2], [23, 37, "barn", 4, 2],
+    [30, 36, "house_thatch2", 3, 2], [24, 43, "house2", 3, 2], [31, 44, "house_thatch", 3, 2], [36, 48, "house", 3, 2],
+    [28, 49, "house_thatch2", 3, 2], [41, 29, "house", 3, 2], [44, 51, "house2", 3, 2],
+    [20, 34, "well", 1, 1], [34, 43, "cart", 2, 1], [27, 39, "crate_stack", 1, 1], [21, 40, "barrel", 1, 1],
+  ];
+  for (const [x, y, sp, fw, fh] of westBld) put({ x, y, kind: "building", sprite: sp, fw, fh, scale: fw >= 3 ? 1.08 : 1 });
+  // 4. Distrito Mercantil e Residencial (Leste: x=62..82)
+  const eastBld = [
+    [68, 29, "house", 3, 2], [75, 29, "house2", 3, 2], [62, 29, "house_thatch", 3, 2], [80, 33, "house_thatch", 3, 2],
+    [73, 37, "house", 3, 2], [79, 39, "house_thatch2", 3, 2], [68, 43, "house2", 3, 2], [75, 44, "house_thatch", 3, 2],
+    [67, 49, "house", 3, 2], [73, 49, "house_thatch2", 3, 2], [58, 51, "house_thatch", 3, 2], [81, 27, "watchtower", 2, 2],
+    [72, 33, "well", 1, 1], [77, 41, "cart", 2, 1],
+  ];
+  for (const [x, y, sp, fw, fh] of eastBld) put({ x, y, kind: "building", sprite: sp, fw, fh, scale: fw >= 3 ? 1.08 : 1 });
+  // 5. Iluminação e mobiliário urbano
+  for (const [x, y] of [[49, 36], [55, 36], [52, 45], [46, 33], [58, 33], [33, 33], [69, 33], [51, 27], [38, 44], [64, 44]]) put({ x, y, kind: "building", sprite: "lantern_fence", fw: 1, fh: 1, solid: false });
+  // 6. Jardins, canteiros e bosques de carvalho dentro da muralha
+  for (let y = 12; y < 55; y++) for (let x = 16; x < 86; x++) {
+    if (!inVila(x, y) || !free(x, y)) continue;
+    const h = hash(x, y) % 100;
+    if (h < 7) put({ x, y, kind: "tree", sprite: h < 3 ? "oak_small" : h < 5 ? "tree_small" : "tree_round" });
+    else if (h < 12) put({ x, y, kind: "building", sprite: "flower_bed", fw: 1, fh: 1, solid: false });
+  }
+  // 7. Subúrbio agrícola extramuros (moinho e celeiro ao oeste/sul de Arken)
+  for (const [x, y, sp, fw, fh] of [[25, 68, "windmill", 2, 2], [20, 71, "barn", 4, 2], [30, 70, "house_thatch", 3, 2], [11, 44, "house_thatch2", 3, 2], [9, 48, "haystack", 1, 1]]) {
+    if (free(x, y, fw, fh)) put({ x, y, kind: "building", sprite: sp, fw, fh });
+  }
   // assentamentos
   const T = n => TOWNS.find(t => t.name === n);
   const near = (t, list) => { for (const [dx, dy, s, fw = 3, fh = 2, solid = true] of list) put({ x: t.tx + dx, y: t.ty + dy, kind: "building", sprite: s, fw, fh, solid }); };

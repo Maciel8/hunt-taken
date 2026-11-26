@@ -6,6 +6,7 @@ import { api } from "./net.js";
 import { act, toast } from "./ui.js";
 import { A } from "./art.js";
 import { CAT } from "./progress.js";
+import { renderSimpleMarket } from "./market.js";
 
 const $ = id => document.getElementById(id);
 const esc = t => String(t ?? "").replace(/[&<>"']/g, c => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]));
@@ -14,12 +15,13 @@ const tn = t => CAT.templates[t]?.name || ITEMS[t]?.name || t;
 const ti = t => ITEMS[t]?.icon || CAT.templates[t]?.icon || "orb";
 const cur = (c, v) => c === "gems" ? `💎 ${fmt(v)}` : `🪙 ${fmt(v)}`;
 const CATN = { arma: "Armas forjadas", armadura: "Armaduras", acessorio: "Anéis e amuletos", escudo: "Escudos", equipamento: "Equipamento", ferramenta: "Ferramentas", bruto: "Material bruto", barra: "Barras", refinado: "Concentrados", madeira: "Madeira", gema: "Gemas", couro: "Couro", reagente: "Reagentes", componente: "Peças", consumivel: "Consumíveis" };
-let M = { data: null, sub: "buy", f: { cat: "", rar: 0, tier: 0, pur: 0, ench: "", cur: "" } };
+let M = { data: null, sub: "simple", f: { cat: "", rar: 0, tier: 0, pur: 0, ench: "", cur: "" } };
 
 export async function renderMarket(box, sub) {
   if (sub) M.sub = sub; if (M.sub === "npc") M.sub = "buy";
-  box.innerHTML = `<div class="tabs2">${[["buy", "Comprar"], ["orders", "Ordens de compra"], ["sell", "Vender"], ["mine", "Meus"]].map(([k, n]) => `<button data-msub="${k}" class="${M.sub === k ? "on" : ""}">${n}</button>`).join("")}</div><div id="msub"><div class="muted">carregando…</div></div>`;
+  box.innerHTML = `<div class="tabs2">${[["simple", "Comprar e vender"], ["buy", "Anúncios (avançado)"], ["orders", "Ordens de compra"], ["sell", "Anunciar"], ["mine", "Meus"]].map(([k, n]) => `<button data-msub="${k}" class="${M.sub === k ? "on" : ""}">${n}</button>`).join("")}</div><div id="msub"><div class="muted">carregando…</div></div>`;
   box.querySelectorAll("[data-msub]").forEach(b => b.onclick = () => renderMarket(box, b.dataset.msub));
+  if (M.sub === "simple") return renderSimpleMarket($("msub"), true);
   try { M.data = await api.market2(); api.marketSeen().catch(() => { }); S.marketNews = 0; } catch (e) { $("msub").innerHTML = esc(e.message); return; }
   const el = $("msub");
   ({ buy: drawBuy, orders: drawOrders, sell: drawSell, mine: drawMine, npc: drawNpc })[M.sub](el, box);

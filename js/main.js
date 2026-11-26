@@ -2,6 +2,8 @@
 import { TICK, HUNTS, HOME } from "./data.js";
 import { buildWorld, huntAt, inVila, NPCS } from "./world.js";
 import { spawnNear } from "./sim.js";
+import { routeTick } from "./travel.js";
+import { wildNear, wildAt, engageWild, wildTick, lairAt, openBoss } from "./wild.js";
 import { S, P, newPlayer, spawnAll, playerTick, monTick, applyServer, log, fmt, walkTo, updateMovement, npcTick, keys } from "./sim.js";
 import { loadAssets, A } from "./art.js";
 import { loadContinent, registerContent, buildHeartLod, procObjects } from "./continent.js";
@@ -102,6 +104,8 @@ function bindCanvas() {
     const npc = NPCS.find(n => Math.abs(n.x - x) <= 1 && Math.abs(n.y - y) <= 1);
     if (npc) { hideHuntPop(); npcDialog(npc); return; }
     const pl = playerAt(x, y); if (pl) { hideHuntPop(); clickPlayer(pl); return; }
+    const wm = wildAt(x, y); if (wm) { hideHuntPop(); engageWild(wm); return; }
+    const lr = lairAt(x, y); if (lr) { hideHuntPop(); openBoss(lr.id); return; }
     const h = huntAt(x, y);
     if (h && P().huntId !== h.id && P().task !== "walk") { showHuntPop(h, ev.clientX, ev.clientY); return; }
     hideHuntPop();
@@ -116,7 +120,7 @@ let acc = 0, last = performance.now();
 function frame(t) {
   const dt = Math.min(100, t - last); last = t; acc += dt; let n = 0;
   updateMovement(dt / 1000); updateOthers(dt / 1000);
-  while (acc >= TICK && n++ < 8) { acc -= TICK; S.t++; playerTick(); if (S.t % 4 === 0) { const { VW, VH } = viewSize(); spawnNear((cam.x + VW / 2) / 32, (cam.y + VH / 2) / 32); } monTick(); npcTick(); dungeonTick(); gatherTick(); mythicTick(); if (S.t % 5 === 0) renderAll(); }
+  while (acc >= TICK && n++ < 8) { acc -= TICK; S.t++; playerTick(); routeTick(); wildTick(); if (S.t % 4 === 0) { const { VW, VH } = viewSize(); spawnNear((cam.x + VW / 2) / 32, (cam.y + VH / 2) / 32); if (!S.p?.inRoom && !S.p?.inDungeon) wildNear((cam.x + VW / 2) / 32, (cam.y + VH / 2) / 32); } monTick(); npcTick(); dungeonTick(); gatherTick(); mythicTick(); if (S.t % 5 === 0) renderAll(); }
   render(dt / 1000); requestAnimationFrame(frame);
 }
 // versão nova publicada: recarrega sozinho (quem fica com a versão antiga não aparece pros outros)

@@ -12,7 +12,7 @@ export const PV = { view: null, sending: false, lastSent: null, cities: null };
 
 // ---------- posição (a cada 3 s; o servidor guarda e devolve zona, PvP e quem está perto) ----------
 export function startPositionReports() { setInterval(report, 3000); report(); bindHud(); }
-async function report() {
+export async function report() {
   const p = S.p; if (!p || PV.sending || !S.server) return; const x = Math.round(p.x), y = Math.round(p.y);
   PV.sending = true;
   try { const r = await rpc("report_position", { p_x: x, p_y: y }); PV.view = r; PV.lastSent = { x, y }; renderZone(); }

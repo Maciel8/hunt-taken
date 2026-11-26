@@ -13,7 +13,11 @@ const seen = new Set(); for (let j = 0; j < 200; j++) for (let i = 0; i < 200; i
 const need = ["DEEP", "BEACH", "CLIFF", "PLAINS", "FOREST", "ANCIENT", "SWAMP", "MANGROVE", "DESERT", "CANYON", "MOUNTAIN", "PEAK", "VOLCANIC", "LAVA", "TUNDRA", "GLACIER", "DARK", "LAKE"];
 const miss = need.filter(k => !seen.has(T.B[k])); ok(!miss.length, "todos os biomas existem" + (miss.length ? " (faltam " + miss.join(",") + ")" : ""));
 // cidades, construções, NPCs, depósitos e áreas de caça
-for (const c of net.cities.filter(c => !c.heart)) { ok(C.procWalk(c.x, c.y) && T.tileAt(c.x, c.y) === T.B.CITY, `praça de ${c.name} andável`); }
+for (const c of net.cities.filter(c => !c.heart)) {
+  ok(C.procWalk(c.x, c.y) && T.tileAt(c.x, c.y) === T.B.CITY, `praça de ${c.name} andável`);
+  const badNpcs = (c.npcs || []).filter(n => !C.procWalk(n.x, n.y));
+  ok(!badNpcs.length, `NPCs de ${c.name} acessíveis (${(c.npcs || []).length})` + (badNpcs.length ? ": " + badNpcs.map(n => n.title).join(",") : ""));
+}
 let blockedNodes = net.nodes.filter(n => !C.procWalk(n.x, n.y) && !C.procWalk(n.x, n.y + 1) && !C.procWalk(n.x + 1, n.y) && !C.procWalk(n.x - 1, n.y));
 ok(!blockedNodes.length, `${net.nodes.length} depósitos acessíveis` + (blockedNodes.length ? ": " + blockedNodes.map(n => n.id).join(",") : ""));
 let badHunts = net.hunts.filter(h => { let n = 0; for (let a = 0; a < 6.283; a += .4) for (const r of [0, 3, 6]) if (C.procWalk(Math.round(h.cx + Math.cos(a) * r), Math.round(h.cy + Math.sin(a) * r))) n++; return n < 30; });

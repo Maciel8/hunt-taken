@@ -6,6 +6,7 @@ import { S, huntInfo, fmt } from "./sim.js";
 import { CONT, cities } from "./continent.js";
 import { OX, OY, SIZE, NET } from "./terrain.js";
 import { rpc } from "./net.js";
+import { travelButtons, bindTravelButtons, ROUTE } from "./travel.js";
 const $ = id => document.getElementById(id);
 const ICON = { arken: "♜", valen: "⚓", khazad: "⚒", solkar: "◆", sylvana: "❦", nocthar: "✦" };
 const SHORT = { arken: "Hub e Mercado Central", valen: "Peixes e couros +35%", khazad: "Minérios +30%", solkar: "Gemas +40%", sylvana: "Madeira e ervas +35%", nocthar: "Reagentes +40% · Encanto V" };
@@ -64,6 +65,8 @@ function draw(cv) {
     g.fillStyle = "#171522"; g.font = "900 13px system-ui, sans-serif"; g.textAlign = "center"; g.textBaseline = "middle"; g.fillText(ICON[c.id] || "●", x, y + 1);
     g.textBaseline = "alphabetic"; g.font = "800 13px Nunito, sans-serif"; g.lineWidth = 4; g.strokeStyle = "rgba(10,8,14,.9)"; g.strokeText(c.name, x, y - 18); g.fillStyle = "#fff6e8"; g.fillText(c.name, x, y - 18);
     g.font = "700 10.5px Nunito, sans-serif"; g.strokeText(SHORT[c.id] || "", x, y + 26); g.fillStyle = "#ffd27a"; g.fillText(SHORT[c.id] || "", x, y + 26); }
+  // rota a pé em andamento
+  if (ROUTE.on && S.p) { g.strokeStyle = "#ffd25a"; g.lineWidth = 3; g.setLineDash([8, 6]); g.beginPath(); [[S.p.x, S.p.y], ...ROUTE.stops, [ROUTE.x, ROUTE.y]].forEach(([x, y], i) => i ? g.lineTo(v.tx(x), v.ty(y)) : g.moveTo(v.tx(x), v.ty(y))); g.stroke(); g.setLineDash([]); }
   // você
   const p = S.p; if (p) { const x = v.tx(p.x), y = v.ty(p.y), pr = 6 + Math.sin(t * 4) * 1.5; g.fillStyle = "#fff"; g.beginPath(); g.arc(x, y, pr, 0, 6.283); g.fill(); g.fillStyle = KING[p.king]?.color || "#c33"; g.beginPath(); g.arc(x, y, pr - 2.2, 0, 6.283); g.fill(); }
 }
@@ -93,15 +96,15 @@ async function select(id) {
   const h = HUNTS.find(x => x.id === id); if (!h) return; const ui = await import("./ui.js"); ui.showAnalyser(id);
   const el = $("analyser"), m = MONS[h.mon], T = TIER[h.ring || 1], c = cities().find(x => x.id === (h.city || "arken"));
   el.insertAdjacentHTML("afterbegin", `<div class="mv-badges"><span class="mv-tier" style="--c:${T[3]}">${T[0]} ${T[1]} · ${T[2]}</span>${h.subregion ? `<span class="muted">${h.subregion}</span>` : ""}</div>
-    <div class="mv-actions"><button class="primary" data-tp="${h.id}">Ir caçar aqui</button>${c && !c.heart ? `<button data-travel-city="${c.id}">Viajar até ${c.name}</button>` : ""}</div>
+    <div class="mv-actions">${travelButtons("hunt", h.id, "Ir a pé e caçar (grátis)")}</div>
     <div class="mv-mon"><div class="row"><span>Atributos</span><b>${m.hp} hp · ${m.atk} atk · ${m.def} def · ${m.exp} exp</b></div>${h.boss && MONS[h.boss] ? `<div class="row"><span>Chefe</span><b>${MONS[h.boss].name} nv ${MONS[h.boss].lvl}</b></div>` : ""}</div>`);
-  const b = el.querySelector("[data-travel-city]"); if (b) b.onclick = () => travel(b.dataset.travelCity, b);
+  bindTravelButtons(el);
 }
 function cityDetail(c) {
   const el = $("analyser"), hs = HUNTS.filter(h => (h.city || "arken") === c.id), n = [1, 2, 3].map(t => hs.filter(h => (h.ring || 1) === t).length);
   el.innerHTML = `<h4>${ICON[c.id] || ""} ${c.name}</h4><p class="muted">${c.spec || ""}</p>${(c.regions || []).map((r, i) => `<div class="row"><span>${TIER[i + 1][0]} ${r}</span><b>${n[i]} áreas</b></div>`).join("")}
-    <div class="mv-actions">${!c.heart ? `<button class="primary" data-travel-city="${c.id}">Viajar até ${c.name}</button>` : ""}<button data-mv-all="1">Ver Continente Todo</button></div>`;
-  const b = el.querySelector("[data-travel-city]"); if (b) b.onclick = () => travel(c.id, b);
+    <div class="mv-actions">${travelButtons("city", c.id)}<button data-mv-all="1">Ver Continente Todo</button></div>`;
+  bindTravelButtons(el);
   el.querySelector("[data-mv-all]").onclick = () => { V.city = "all"; $("mvCity").value = "all"; showAll(); list(); };
 }
 async function travel(id, b) { b.disabled = true; const { toast, closeModal, renderAll } = await import("./ui.js");

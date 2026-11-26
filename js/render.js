@@ -5,6 +5,7 @@ import { S, fx, occupantsOf } from "./sim.js";
 import { A, drawGround, drawObject, drawProps, drawMon, drawUnit, CH, GROUND, DETAIL } from "./art.js";
 import { drawContinent, drawShips, procObjects, drawMiniOverview, cities as contCities, CONT, LOD_ZOOM, HI_ZOOM, snapDraw, BUDGET, heartFallback } from "./continent.js";
 import { OX, OY, SIZE, OVT, isNature } from "./terrain.js";
+import { drawRoute, ROUTE } from "./travel.js";
 import { updateFx, drawFx } from "./fx.js";
 import { NODES, nodeStatus, TOOL_ICON, PROF_VERB } from "./gather.js";
 export const hover = { node: null };
@@ -60,11 +61,12 @@ export function render(dt) {
   // área de caça atual: círculo pontilhado dourado
   const hh = P.huntId && HUNTS.find(x => x.id === P.huntId);
   if (hh) { cx.strokeStyle = "rgba(193,139,54,.75)"; cx.lineWidth = 2; cx.setLineDash([8, 8]); cx.beginPath(); cx.arc((hh.cx + .5) * T, (hh.cy + .5) * T, hh.r * T, 0, 6.283); cx.stroke(); cx.setLineDash([]); }
+  if (!room) drawRoute(cx, performance.now() / 1000);
   // lista de profundidade
   const ents = [];
   if (!far && !heartBaked) for (let by = Math.floor(ty0 / CH) - 1; by <= Math.floor(ty1 / CH) + 1; by++) for (let bx = Math.floor(tx0 / CH) - 1; bx <= Math.floor(tx1 / CH) + 1; bx++) { const list = bucket.get(bx + "," + by); if (!list) continue; for (const o of list) if (o.x >= tx0 - 6 && o.x <= tx1 + 6 && o.y >= ty0 && o.y <= ty1 + 4) ents.push({ y: o.y + 1, d: () => drawObject(cx, o) }); }
   if (!room && !far) for (const o of procObjects(tx0 - 6, ty0, tx1 + 6, ty1 + 4)) if (!(baked && isNature(o)) && (!o.decor || z >= .25)) ents.push({ y: o.y + 1, d: () => drawObject(cx, o) });
-  if (z >= .05) for (const m of S.mons) if (m.alive && m.x > tx0 && m.x < tx1 && m.y > ty0 && m.y < ty1) ents.push({ y: m.y + 1, d: () => drawMon(cx, m) });
+  if (z >= .05) for (const m of S.mons) if (m.alive && m.x > tx0 && m.x < tx1 && m.y > ty0 && m.y < ty1) ents.push({ y: m.y + 1, d: () => { if (m.rare) { const t = performance.now() / 300; cx.fillStyle = `rgba(255,210,90,${.22 + Math.sin(t) * .08})`; cx.beginPath(); cx.ellipse((m.x + .5) * T, (m.y + .9) * T, 22, 9, 0, 0, 6.283); cx.fill(); } drawMon(cx, m); } });
   for (const n of NPCS) if (n.x > tx0 && n.x < tx1 && n.y > ty0 && n.y < ty1) ents.push({ y: n.y + 1, d: () => drawUnit(cx, n) });
   for (const b of S.others || []) ents.push({ y: b.y + 1, d: () => drawUnit(cx, b) });
   if (P.dead === 0 || Math.floor(S.t) % 2) ents.push({ y: P.y + 1.01, d: () => drawUnit(cx, P) });
@@ -129,6 +131,7 @@ function drawMini(mx, my, ccx, ccy, WW, WH, P) {
   if (span <= 1200) for (const o of NODES.values()) { const x = tx(o.x), y = ty(o.y); if (!inside(x, y)) continue; const st = nodeStatus(o).state; cx.fillStyle = st === "ok" ? "#7ee07e" : st === "empty" ? "rgba(120,116,136,.6)" : "rgba(255,191,58,.8)"; cx.fillRect(x - 1, y - 1, 2, 2); }
   for (const h of HUNTS) { const o = occupantsOf(h.id).length; if (o) { cx.fillStyle = "#ff8a8a"; cx.fillRect(tx(h.cx) - 2, ty(h.cy) - 2, 4, 4); } }
   for (const b of S.others || []) { const x = tx(b.x), y = ty(b.y); if (!inside(x, y)) continue; cx.fillStyle = "#111"; cx.fillRect(x - 2, y - 2, 5, 5); cx.fillStyle = KING[b.king]?.color || "#fff"; cx.fillRect(x - 1, y - 1, 3, 3); }
+  if (ROUTE.on) { cx.strokeStyle = "#ffd25a"; cx.lineWidth = 2; cx.setLineDash([5, 4]); cx.beginPath(); [[P.x, P.y], ...ROUTE.stops, [ROUTE.x, ROUTE.y]].forEach(([x, y], i) => i ? cx.lineTo(tx(x), ty(y)) : cx.moveTo(tx(x), ty(y))); cx.stroke(); cx.setLineDash([]); cx.fillStyle = "#ffd25a"; cx.fillRect(tx(ROUTE.x) - 3, ty(ROUTE.y) - 3, 6, 6); }
   // retângulo da tela
   cx.strokeStyle = "rgba(255,255,255,.9)"; cx.lineWidth = 1; cx.strokeRect(Math.round(tx(ccx / T - WW / T / 2)) + .5, Math.round(ty(ccy / T - WH / T / 2)) + .5, Math.max(3, WW / T * kx), Math.max(3, WH / T * ky));
   cx.fillStyle = "#fff"; cx.fillRect(tx(P.x) - 2, ty(P.y) - 2, 5, 5); cx.fillStyle = KING[P.king].color; cx.fillRect(tx(P.x) - 1, ty(P.y) - 1, 3, 3);

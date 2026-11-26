@@ -110,6 +110,9 @@ insert into r select 't15_simulate_aneis', (position('ring_drop' in pg_get_funct
 -- 16. caçada no anel 3 de Valen roda no servidor
 update characters set pos_at = now(), level = 60 where id = :'tid';
 set local role authenticated; select pg_temp.as_(:'tuid');
+do $$ begin perform start_hunt('valen_a3'); insert into r values ('t16_caca_longe', 'COMEÇOU (erro)'); exception when others then insert into r values ('t16_caca_longe', sqlerrm); end $$;
+reset role; update characters set x = (select (rect->>'x')::int + 9 from hunts where id = 'valen_a3'), y = (select (rect->>'y')::int + 9 from hunts where id = 'valen_a3'), pos_at = now() where id = :'tid';
+set local role authenticated; select pg_temp.as_(:'tuid');
 select start_hunt('valen_a3') is not null as hs \gset
 reset role; update characters set last_simulated_at = now() - interval '2 hours' where id = :'tid'; update hunt_sessions set started_at = started_at - interval '2 hours' where character_id = :'tid' and status = 'ativa';
 set local role authenticated; select pg_temp.as_(:'tuid');
@@ -136,6 +139,45 @@ set local role authenticated; select pg_temp.as_(:'tuid');
 select (boat_travel(:'pa', 'valen_porto') ->> 'cost')::int as longcost \gset
 insert into r select 't19_viagem_longa', (:longcost between 50 and 250)::text;
 do $$ begin perform boat_travel((select id from boat_ports where lake is not null and id like '%a' order by id limit 1), 'valen_porto'); insert into r values ('t19_longe_do_pier', 'EMBARCOU (erro)'); exception when others then insert into r values ('t19_longe_do_pier', sqlerrm); end $$;
+-- 20. viagem rápida: 2 diamantes, só cobra se acontecer; sem diamantes é recusada e nada é cobrado
+reset role; update characters set task = 'idle', hunt_id = null where id = :'tid'; update hunt_sessions set status = 'encerrada' where character_id = :'tid' and status = 'ativa';
+update wallets set gems = 3 where character_id = :'tid';
+set local role authenticated; select pg_temp.as_(:'tuid');
+insert into r select 't20_viagem_rapida', (fast_travel('city', 'khazad') -> 'travel' ->> 'cost');
+reset role; insert into r select 't20_gemas_depois', gems::text from wallets where character_id = :'tid';
+set local role authenticated; select pg_temp.as_(:'tuid');
+do $$ begin perform fast_travel('city', 'solkar'); insert into r values ('t20_sem_gemas', 'VIAJOU (erro)'); exception when others then insert into r values ('t20_sem_gemas', sqlerrm); end $$;
+reset role; insert into r select 't20_gemas_intactas', gems::text from wallets where character_id = :'tid';
+-- 21. mapa aberto: luta de verdade no servidor (perto da criatura), criatura morta não pode ser atacada de novo
+select s.id as sid, s.x as sx, s.y as sy from world_spawns s join creatures cr on cr.id = s.creature_id where cr.level between 20 and 35 and not s.rare order by s.id limit 1 \gset
+update characters set x = :sx + 50, y = :sy, pos_at = now(), last_fight_at = null, hp = 5000, task = 'idle' where id = :'tid';
+set local role authenticated; select pg_temp.as_(:'tuid');
+do $$ begin perform fight_spawn((select s.id from world_spawns s join creatures cr on cr.id = s.creature_id where cr.level between 20 and 35 and not s.rare order by s.id limit 1)); insert into r values ('t21_longe', 'LUTOU (erro)'); exception when others then insert into r values ('t21_longe', sqlerrm); end $$;
+reset role; update characters set x = :sx, y = :sy, pos_at = now() where id = :'tid';
+set local role authenticated; select pg_temp.as_(:'tuid');
+insert into r select 't21_luta', (fight_spawn(:'sid') ->> 'won');
+reset role; update characters set last_fight_at = null where id = :'tid';
+set local role authenticated; select pg_temp.as_(:'tuid');
+do $$ begin perform fight_spawn((select s.id from world_spawns s join creatures cr on cr.id = s.creature_id where cr.level between 20 and 35 and not s.rare order by s.id limit 1)); insert into r values ('t21_morta', 'LUTOU (erro)'); exception when others then insert into r values ('t21_morta', sqlerrm); end $$;
+-- 22. chefe: precisa estar no covil, combate com log por rodada, não repete na hora
+reset role; update characters set hp = 5000, last_fight_at = null where id = :'tid'; select x as bx, y as by from bosses where id = 'boss_arken' \gset
+set local role authenticated; select pg_temp.as_(:'tuid');
+do $$ begin perform boss_fight('boss_arken'); insert into r values ('t22_longe', 'LUTOU (erro)'); exception when others then insert into r values ('t22_longe', sqlerrm); end $$;
+reset role; update characters set x = :bx, y = :by, pos_at = now() where id = :'tid';
+set local role authenticated; select pg_temp.as_(:'tuid');
+select boss_fight('boss_arken') as bf \gset
+insert into r select 't22_log', (jsonb_array_length(:'bf'::jsonb -> 'log') > 5)::text;
+do $$ begin perform boss_fight('boss_arken'); insert into r values ('t22_repetir', 'LUTOU (erro)'); exception when others then insert into r values ('t22_repetir', sqlerrm); end $$;
+-- 23. cotação de venda = mesmo valor que a venda paga
+reset role; select stack_add(:'tid', 'peixe_comum', 50, 5);
+set local role authenticated; select pg_temp.as_(:'tuid');
+select (sell_quote('mercador', '[{"t":"peixe_comum","qty":5,"purity":50}]') -> 'quotes' -> 0 ->> 'gold')::int as quote \gset
+insert into r select 't23_cotacao_igual', ((shop_sell('mercador', '{"t":"peixe_comum","qty":5,"purity":50}') ->> 'gold')::int = :quote)::text;
+-- 24. mercado simples: cotação = valor pago na venda de material
+reset role; select stack_add(:'tid', 'peixe_comum', 60, 9);
+set local role authenticated; select pg_temp.as_(:'tuid');
+select (market_sell_quote('peixe_comum', 60, 9) ->> 'gold')::int as mq \gset
+insert into r select 't24_mercado_cotacao', ((sell_stack('peixe_comum', 60, 9) ->> 'gold')::int = :mq)::text;
 reset role;
 select k || ' => ' || coalesce(v, 'NULL') from r order by k;
 rollback;
