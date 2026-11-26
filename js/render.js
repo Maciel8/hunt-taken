@@ -2,9 +2,9 @@
 import { TICK, T, MW, MH, HUNTS, MONS, KING, ZONES, TOWNS } from "./data.js";
 import { objects, huntAt, regionAt, zoneAt, NPCS, ROOMS, interiorAt } from "./world.js";
 import { S, fx, occupantsOf } from "./sim.js";
-import { A, drawGround, drawObject, drawProps, drawMon, drawUnit, CH } from "./art.js";
-import { drawContinent, drawShips, procObjects, drawMiniOverview, cities as contCities, CONT, LOD_ZOOM, snapDraw } from "./continent.js";
-import { OX, OY, SIZE, OVT } from "./terrain.js";
+import { A, drawGround, drawObject, drawProps, drawMon, drawUnit, CH, GROUND, DETAIL } from "./art.js";
+import { drawContinent, drawShips, procObjects, drawMiniOverview, cities as contCities, CONT, LOD_ZOOM, HI_ZOOM, snapDraw, BUDGET, heartFallback } from "./continent.js";
+import { OX, OY, SIZE, OVT, isNature } from "./terrain.js";
 import { updateFx, drawFx } from "./fx.js";
 import { NODES, nodeStatus, TOOL_ICON, PROF_VERB } from "./gather.js";
 export const hover = { node: null };
@@ -29,6 +29,7 @@ function buildBucket() { bucket = new Map(); for (const o of objects) { const k 
 let banner = { text: "", sub: "", until: 0, region: null };
 
 export function render(dt) {
+  { const t0 = performance.now(); GROUND.until = t0 + 5; BUDGET.until = t0 + 7; if (!GROUND.fallback) GROUND.fallback = heartFallback; DETAIL.low = cam.zoom < .35; }
   const P = S.p; if (!bucket) buildBucket();
   // câmera: mola com zona morta e leve adianto na direção do movimento
   updateFx(dt);
@@ -49,18 +50,20 @@ export function render(dt) {
   cx.save(); cx.setTransform(z, 0, 0, z, -ox * z, -oy * z);
   const far = !room && z < LOD_ZOOM;
   if (!room) drawContinent(cx, ox, oy, WW, WH, S.t || performance.now() / 1000, z);
-  if (far) { cx.imageSmoothingEnabled = false; if (CONT.heartLod) snapDraw(cx, CONT.heartLod, 0, 0, MW * T, MH * T); }   // longe: o coração vira a pintura
+  const heartBaked = !room && !far && z < HI_ZOOM && CONT.heartMid, baked = !room && z < HI_ZOOM;   // zoom médio: natureza e coração já vêm desenhados
+  if (far) { cx.imageSmoothingEnabled = false; if (CONT.heartLod) snapDraw(cx, CONT.heartLod, 0, 0, MW * T, MH * T); }
+  else if (heartBaked) { cx.imageSmoothingEnabled = false; snapDraw(cx, CONT.heartMid, 0, 0, MW * T, MH * T); drawGround(cx, ox, oy, WW, WH, true); }
   else drawGround(cx, ox, oy, WW, WH);
   if (!room) drawShips(cx, performance.now() / 1000);
   const tx0 = Math.floor(ox / T) - 2, ty0 = Math.floor(oy / T) - 2, tx1 = Math.ceil((ox + WW) / T) + 2, ty1 = Math.ceil((oy + WH) / T) + 6;
-  if (!far) drawProps(cx, tx0, ty0, tx1, ty1);
+  if (!far && !heartBaked) drawProps(cx, tx0, ty0, tx1, ty1);
   // área de caça atual: círculo pontilhado dourado
   const hh = P.huntId && HUNTS.find(x => x.id === P.huntId);
   if (hh) { cx.strokeStyle = "rgba(193,139,54,.75)"; cx.lineWidth = 2; cx.setLineDash([8, 8]); cx.beginPath(); cx.arc((hh.cx + .5) * T, (hh.cy + .5) * T, hh.r * T, 0, 6.283); cx.stroke(); cx.setLineDash([]); }
   // lista de profundidade
   const ents = [];
-  if (!far) for (let by = Math.floor(ty0 / CH) - 1; by <= Math.floor(ty1 / CH) + 1; by++) for (let bx = Math.floor(tx0 / CH) - 1; bx <= Math.floor(tx1 / CH) + 1; bx++) { const list = bucket.get(bx + "," + by); if (!list) continue; for (const o of list) if (o.x >= tx0 - 6 && o.x <= tx1 + 6 && o.y >= ty0 && o.y <= ty1 + 4) ents.push({ y: o.y + 1, d: () => drawObject(cx, o) }); }
-  if (!room && !far) for (const o of procObjects(tx0 - 6, ty0, tx1 + 6, ty1 + 4)) if (!o.decor || z >= .15) ents.push({ y: o.y + 1, d: () => drawObject(cx, o) });
+  if (!far && !heartBaked) for (let by = Math.floor(ty0 / CH) - 1; by <= Math.floor(ty1 / CH) + 1; by++) for (let bx = Math.floor(tx0 / CH) - 1; bx <= Math.floor(tx1 / CH) + 1; bx++) { const list = bucket.get(bx + "," + by); if (!list) continue; for (const o of list) if (o.x >= tx0 - 6 && o.x <= tx1 + 6 && o.y >= ty0 && o.y <= ty1 + 4) ents.push({ y: o.y + 1, d: () => drawObject(cx, o) }); }
+  if (!room && !far) for (const o of procObjects(tx0 - 6, ty0, tx1 + 6, ty1 + 4)) if (!(baked && isNature(o)) && (!o.decor || z >= .25)) ents.push({ y: o.y + 1, d: () => drawObject(cx, o) });
   if (z >= .05) for (const m of S.mons) if (m.alive && m.x > tx0 && m.x < tx1 && m.y > ty0 && m.y < ty1) ents.push({ y: m.y + 1, d: () => drawMon(cx, m) });
   for (const n of NPCS) if (n.x > tx0 && n.x < tx1 && n.y > ty0 && n.y < ty1) ents.push({ y: n.y + 1, d: () => drawUnit(cx, n) });
   for (const b of S.others || []) ents.push({ y: b.y + 1, d: () => drawUnit(cx, b) });

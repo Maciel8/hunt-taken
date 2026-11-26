@@ -112,7 +112,7 @@ export function tileAt(x, y, ground = false) {
       else if (s.kind === "city" && cityInside(s.city, x + .5, y + .5) < 1.045) city = s.city; }
     if (dock) return B.DOCK;
     if (lake && !road) return B.LAKE;   // lago do oásis fica dentro da cidade
-    if (city) return B.CITY;
+    if (city) { const w = cityWater(city, x + .5, y + .5); return !w ? B.CITY : w.bridge ? B.BRIDGE : w.t === "lava" ? B.LAVA : w.t === "murky" ? B.MURKY : B.RIVER; }
     if (ground) return b;
     if (road) return (riverNear || b === B.LAKE || b === B.MURKY || b === B.SHALLOW) ? B.BRIDGE : B.ROAD;
     if (river && b !== B.DEEP && b !== B.OCEAN) return b === B.TUNDRA || b === B.GLACIER ? B.ICE : B.RIVER;
@@ -140,6 +140,18 @@ export function zoneAt(x, y) {
   let best = null, bd = 1e18; for (const ci of NET.cities) { const d = Math.hypot(x - (ci.heart ? 150 : ci.x), y - (ci.heart ? 100 : ci.y)); if (d < bd) { bd = d; best = ci; } }
   return { city: best, ring: 3 };
 }
+// água dentro das cidades (mesma conta no gerador, no Worker e na colisão): canais de Solkar, lava de Khazad,
+// riachos de Sylvana, fosso escuro de Nocthar; onde cruza rua vira ponte
+export function cityStreet(c, x, y) { const dx = x - c.x - .5, dy = y - c.y - .5; if (Math.abs(dx) < 2.2 || Math.abs(dy) < 2.2) return true; const mx = ((dx % 16) + 16) % 16, my = ((dy % 14) + 14) % 14; return Math.min(mx, 16 - mx) < 1.3 || Math.min(my, 14 - my) < 1.3; }
+export function cityWater(c, x, y) {
+  if (!c || c.heart) return null; const dx = x - c.x - .5, dy = y - c.y - .5, e = Math.hypot(dx / c.rx, dy / c.ry); if (e > .86) return null;
+  let t = null;
+  if (c.theme === "solkar") { if ((Math.abs(dy - 22) < 1.3 && Math.abs(dx) < 56) || (Math.abs(Math.abs(dx) - 36) < 1.3 && dy > -40 && dy < 48)) t = "water"; }
+  else if (c.theme === "khazad") { if ((Math.abs(dx - 26) < 1.2 && Math.abs(dy) < 44) || (Math.abs(dy + 26) < 1.2 && Math.abs(dx) < 50)) t = "lava"; }
+  else if (c.theme === "sylvana") { if (Math.abs(dx - 18 - 9 * Math.sin(dy / 11)) < 1.1 || Math.abs(dx + 30 + 7 * Math.sin(dy / 9 + 1)) < 1.1) t = "water"; }
+  else if (c.theme === "nocthar") { if (Math.abs(e - .6) < .022) t = "murky"; }
+  if (!t) return null; return { t, bridge: cityStreet(c, x - .5, y - .5) };
+}
 export function regionName(z) { if (!z || !z.city) return "Mar aberto"; return (z.city.regions && z.city.regions[z.ring - 1]) || z.city.name; }
 
 // ---------- objetos de um pedaço (árvores, rochas, casas, marcos de anel) — determinístico ----------
@@ -149,6 +161,14 @@ const TREE = { [B.PLAINS]: [["oak", .0163], ["oak_small", .016], ["tree_small", 
   [B.SWAMP]: [["dead", .031], ["willow", .0125]], [B.MANGROVE]: [["willow", .05, "swamp"], ["dead", .02]], [B.DESERT]: [["palm", .008], ["cactus", .02]], [B.CANYON]: [["boulder", .0485]],
   [B.MOUNTAIN]: [["boulder", .047], ["peak", .02]], [B.VOLCANIC]: [["boulder", .035], ["dead", .025], ["peak", .015]], [B.TUNDRA]: [["peak", .0315], ["pine_small", .031, "snow"], ["pine", .033, "snow"], ["boulder", .034]], [B.GLACIER]: [["peak", .02], ["boulder", .02, "ice"]],
   [B.DARK]: [["dead", .013], ["ruinwall", .031], ["boulder", .015]], [B.BEACH]: [["palm", .012]], [B.CLIFF]: [["boulder", .05]] };
+// natureza "assada" nos pedaços de zoom médio (o resto — prédios, muralhas, marcos — é desenhado ao vivo)
+export const NATURE = new Set(["tree", "palm", "cactus", "peak", "ruinwall"]);
+export const isNature = o => NATURE.has(o.kind) && !o.label && !o.door;
+export function natureSpriteKeys() { const set = new Set(); const add = (sp, t) => set.add(sp + "|" + (t || ""));
+  for (const list of Object.values(TREE)) for (const [sp, , t] of list) if (!["palm", "cactus", "peak", "ruinwall"].includes(sp)) add(sp, t);
+  for (const d of Object.values(DECOR)) for (const sp of d.s) add(sp, d.t);
+  for (const [sp, t] of [["oak", "ancient"], ["pine", "ancient"], ["pine", "deep"], ["pine_small", "deep"], ["dead", "void"], ["tree_round", null], ["oak_small", "ancient"], ["pine", "snow"], ["boulder", "ice"]]) add(sp, t);
+  return [...set]; }
 export const treeDensity = b => (TREE[b] || []).reduce((a, t) => a + t[1], 0);
 function clearAt(x, y) {
   if (!NET.ready) return false; const c = NET.clear || (NET.clear = new Map());
@@ -180,6 +200,7 @@ export function chunkObjects(cx, cy, tiles) {
   }
   // construções das cidades (geradas sobre o calçamento)
   if (NET.ready) for (const c of NET.cities) for (const o of c.buildings || []) if (Math.floor(o.x / CHUNK) === cx && Math.floor(o.y / CHUNK) === cy) out.push({ ...o, proc: true, solid: o.solid !== false });
+  if (NET.ready) for (const o of NET.extras || []) if (Math.floor(o.x / CHUNK) === cx && Math.floor(o.y / CHUNK) === cy) out.push({ ...o, solid: o.solid !== false, proc: true });
   // marcos de fronteira onde as estradas cruzam de um território pro outro (bandeiras âmbar no nível 2, monólitos vermelhos no 3)
   if (NET.ready) for (const m of NET.markers || []) if (Math.floor(m.x / CHUNK) === cx && Math.floor(m.y / CHUNK) === cy) out.push({ ...m, solid: true, proc: true });
   return out;

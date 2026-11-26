@@ -6,7 +6,7 @@
 // Uso: node scripts/gen-world.mjs <dir_saida_tmp>
 import fs from "node:fs";
 import { fbm as fbm2 } from "../js/terrain.js";
-import { SIZE, OX, OY, B, baseBiome, initNet, tileAt, isBlocked, NET, zoneAt, chunkObjects, chunkTiles, CHUNK, BIOME_RGB, hashTile, coastAt, cityInside, OVT, OVN, treeDensity } from "../js/terrain.js";
+import { SIZE, OX, OY, B, baseBiome, initNet, tileAt, isBlocked, NET, zoneAt, chunkObjects, chunkTiles, CHUNK, BIOME_RGB, hashTile, coastAt, cityInside, OVT, OVN, treeDensity, cityWater } from "../js/terrain.js";
 const OUT = process.argv[2] || "."; const t0 = Date.now(); const log = (...a) => console.log(`[${((Date.now() - t0) / 1000).toFixed(1)}s]`, ...a);
 const edge = JSON.parse(fs.readFileSync(new URL("../assets/heartland-edge.json", import.meta.url)));
 const L = (gx, gy) => [gx - OX, gy - OY];          // global → local
@@ -69,6 +69,9 @@ let srcN = 0; for (let k = 0; srcN < 18 && k < 4000; k++) {
 const runs = []; for (const t of edge.tiles.filter(t => t[3])) { const r = runs.find(r => Math.abs(r.x - t[0]) + Math.abs(r.y - t[1]) < 4 && r.side === (t[1] === 199 ? "s" : t[1] === 0 ? "n" : t[0] === 0 ? "w" : "e")); if (r) { r.n++; r.sx += t[0]; r.sy += t[1]; r.x = t[0]; r.y = t[1]; } else runs.push({ side: t[1] === 199 ? "s" : t[1] === 0 ? "n" : t[0] === 0 ? "w" : "e", n: 1, sx: t[0], sy: t[1], x: t[0], y: t[1] }); }
 for (const r of runs) { const mx = Math.round(r.sx / r.n), my = Math.round(r.sy / r.n), d = { s: [0, 1], n: [0, -1], w: [-1, 0], e: [1, 0] }[r.side];
   const pts = [[mx, my], [mx + d[0] * 6, my + d[1] * 6]]; const w = Math.min(2.2, Math.max(1.1, r.n / 3)); rivers.push({ pts, w: [w, w], heart: true }); flow(mx + d[0] * 6, my + d[1] * 6, Math.atan2(d[1], d[0]), w); }
+// rio que desce ao lado de Porto de Valen até o mar
+{ const c = cities.find(q => q.id === "valen"), y0 = c.y - c.ry - 42, pts = []; for (let x = c.x - 340; x < SIZE - OX; x += 10) { const y = Math.round(y0 + Math.sin(x / 70) * 14); pts.push([x, y]); if (!landAt(x, y)) break; }
+  rivers.push({ pts, w: pts.map((_, i) => Math.min(2.2, 1.1 + i * .02)), valen: true }); }
 // rios suaves (curvas em vez de segmentos retos de 10 tiles), largura acompanhando
 for (const r of rivers) { const P = chaikin(r.pts, 3); r.w = P.map((_, i) => r.w[Math.round(i / (P.length - 1) * (r.w.length - 1))]); r.pts = P; }
 log("rios", rivers.length);
@@ -127,30 +130,34 @@ log("estradas", roads.length, roads.map(r => r.pts.length).join(","));
 // ---------- porto de Valen: docas pro mar e navios ----------
 const ports = []; { const c = C("valen"); let x = c.x + c.rx + 2, y = c.y; while (landAt(x, y)) x += 1; const dock = [[x - 6, y], [x + 16, y]], dock2 = [[x + 4, y - 7], [x + 4, y + 7]];
   ports.push({ city: "valen", x, y, docks: [dock, dock2], ships: [[x + 13, y - 4], [x + 13, y + 5]] });
-  roads.push({ from: "valen", to: "porto", pts: [[c.x + c.rx, c.y], [x - 6, y]] }); }
+  roads.push({ from: "valen", to: "porto", pts: [[c.x + c.rx, c.y], [x - 6, y]] });
+  for (const dy of [-34, -18, 18, 34]) { let px = c.x + c.rx - 10; while (landAt(px, y + dy) && px < x + 60) px++; ports[0].docks.push([[px - 4, y + dy], [px + 13, y + dy]]); ports[0].ships.push([px + 11, y + dy + (dy < 0 ? -4 : 4)]); } }
 // oásis de Solkar
 const lakes = [{ x: C("solkar").x, y: C("solkar").y + 22, r: 12 }, { x: C("solkar").x + 110, y: C("solkar").y + 30, r: 14 }];
 
+initNet({ cities, rivers, roads, ports, lakes, edge });
+const clearNear = (x, y) => false;
 // ---------- cidades: muralha poligonal temática, 4 portões nas estradas, ruas em grade, praça com monumento,
 // 12-18 prédios grandes (com porta; taverna e salão têm interior), casas e jardins nos quarteirões, arredores temáticos ----------
 const STREET_X = 16, STREET_Y = 14;
 const onStreet = (c, x, y) => { const dx = x - c.x, dy = y - c.y; if (Math.abs(dx) < 3 || Math.abs(dy) < 3) return true;
   const mx = ((dx % STREET_X) + STREET_X) % STREET_X, my = ((dy % STREET_Y) + STREET_Y) % STREET_Y; return Math.min(mx, STREET_X - mx) < 2 || Math.min(my, STREET_Y - my) < 2; };
-const POLY = { khazad: { n: 8, r: [.9, .9], rot: Math.PI / 8 }, valen: { n: 11, r: [.8, .92], open: [-.75, .75] }, solkar: { n: 12, r: [.84, .93] }, sylvana: { n: 15, r: [.76, .94] }, nocthar: { n: 7, r: [.78, .94], rot: .3 } };
+const POLY = { khazad: { n: 8, r: [.9, .9], rot: Math.PI / 8 }, valen: { n: 11, r: [.8, .92], open: [-.75, .75] }, solkar: { n: 8, r: [.9, .9], rot: Math.PI / 8 }, sylvana: { n: 15, r: [.76, .94] }, nocthar: { n: 9, r: [.86, .95], rot: .3 } };
 // [sprite ou kind, escala, rótulo, interior?] — os prédios grandes de cada cidade
 const LAND = {
-  valen: [["tavern", 1.5, "Taverna do Cais", "taverna"], ["castle", .55, "Capitania do Porto", "salao"], ["barn", 1.7, "Armazém Naval"], ["barn", 1.6, "Armazém de Peixe"], ["house2", 1.6, "Guilda dos Mercadores"], ["house", 1.5, "Casa de Câmbio"], ["barn", 1.4, "Estaleiro"], ["house_thatch", 1.5, "Cordoaria"], ["house2", 1.4, "Curtume"], ["house", 1.4, "Alfândega"], ["watchtower", 1.6, "Torre do Vigia"], ["house_thatch2", 1.4, "Peixaria"], ["barn", 1.5, "Depósito de Sal"], ["house", 1.4, "Escola de Navegação"]],
-  khazad: [["forgecitadel", 1, "Cidadela-Forja", "salao"], ["tavern", 1.5, "Taverna da Bigorna", "taverna"], ["house2", 1.6, "Guilda dos Ferreiros", null, "stone"], ["mine", 1.6, "Entrada da Mina Real"], ["barn", 1.5, "Armazém de Minério", null, "stone"], ["forge", 1.4, "Fundição"], ["forge", 1.4, "Oficina de Armas"], ["house2", 1.5, "Casa da Moeda", null, "stone"], ["house", 1.4, "Alojamento dos Mineiros", null, "stone"], ["barn", 1.4, "Carvoaria", null, "stone"], ["house2", 1.4, "Lapidação Bruta", null, "stone"], ["watchtower", 1.6, "Torre de Vigia"], ["house", 1.4, "Casa do Mestre", null, "stone"], ["forge", 1.3, "Forja do Aprendiz"]],
-  solkar: [["dome", 1.3, "Palácio do Oásis", "salao"], ["tavern", 1.5, "Taverna da Areia", "taverna"], ["dome", 1.1, "Templo do Sol"], ["dome", 1.1, "Casa das Gemas"], ["house_thatch", 1.5, "Guilda dos Joalheiros"], ["tent", 1.6, "Tenda do Caravaneiro"], ["tent", 1.6, "Tenda das Especiarias"], ["barn", 1.4, "Armazém de Água"], ["house_thatch2", 1.4, "Lapidário"], ["dome", 1, "Banho Público"], ["tent", 1.5, "Tenda dos Tecidos"], ["house_thatch", 1.4, "Estábulo de Camelos"], ["watchtower", 1.5, "Torre de Areia"], ["dome", 1, "Observatório"]],
-  sylvana: [["witch_hut", 1.8, "Taverna da Raiz", "taverna"], ["house_thatch", 1.7, "Salão dos Druidas", "salao"], ["witch_hut", 1.6, "Alquimia Verde"], ["house_thatch2", 1.6, "Guilda dos Lenhadores"], ["barn", 1.5, "Serraria Élfica"], ["witch_hut", 1.5, "Herbanário"], ["house_thatch", 1.5, "Casa da Seiva"], ["house_thatch2", 1.5, "Arqueiros da Copa"], ["witch_hut", 1.4, "Viveiro"], ["house_thatch", 1.4, "Ateliê de Arcos"], ["barn", 1.4, "Celeiro de Ervas"], ["witch_hut", 1.4, "Casa da Anciã"], ["house_thatch2", 1.4, "Tecelagem"], ["house_thatch", 1.4, "Mel e Cera"]],
-  nocthar: [["darktower", 1, "Torre do Arcano", "salao"], ["tavern", 1.5, "Taverna da Lua Negra", "taverna"], ["darktower", .8, "Biblioteca Proibida"], ["house2", 1.6, "Guilda dos Encantadores", null, "void"], ["house", 1.5, "Mercado Negro", null, "void"], ["darktower", .7, "Ossuário"], ["house2", 1.5, "Relicário", null, "void"], ["house", 1.4, "Casa das Velas", null, "void"], ["barn", 1.4, "Cripta", null, "void"], ["house2", 1.4, "Alquimia Sombria", null, "void"], ["house", 1.4, "Escriba", null, "void"], ["darktower", .7, "Vigia do Abismo"], ["house2", 1.4, "Casa do Necromante", null, "void"], ["house", 1.4, "Pousada Sombria", null, "void"]] };
+  valen: [["tavern", 1.5, "Taverna do Cais", "taverna"], ["castle", .55, "Capitania do Porto", "salao"], ["barn", 1.7, "Armazém Naval"], ["barn", 1.6, "Armazém de Peixe"], ["house2", 1.6, "Guilda dos Mercadores"], ["house", 1.5, "Casa de Câmbio"], ["barn", 1.4, "Estaleiro"], ["house_thatch", 1.5, "Cordoaria"], ["house2", 1.4, "Curtume"], ["house", 1.4, "Alfândega"], ["watchtower", 1.6, "Torre do Vigia"], ["house_thatch2", 1.4, "Peixaria"], ["barn", 1.5, "Depósito de Sal"], ["house", 1.4, "Escola de Navegação"], ["house2", 1.4, "Mercado de Peixe"], ["barn", 1.4, "Armazém de Cordas"], ["house", 1.4, "Casa do Prático"], ["house_thatch2", 1.4, "Defumadouro"], ["house2", 1.4, "Escritório Naval"], ["house", 1.4, "Capela do Mar"]],
+  khazad: [["forgecitadel", 1, "Cidadela-Forja", "salao"], ["tavern", 1.5, "Taverna da Bigorna", "taverna"], ["house2", 1.6, "Guilda dos Ferreiros", null, "stone"], ["mine", 1.6, "Entrada da Mina Real"], ["barn", 1.5, "Armazém de Minério", null, "stone"], ["forge", 1.4, "Fundição"], ["forge", 1.4, "Oficina de Armas"], ["house2", 1.5, "Casa da Moeda", null, "stone"], ["house", 1.4, "Alojamento dos Mineiros", null, "stone"], ["barn", 1.4, "Carvoaria", null, "stone"], ["house2", 1.4, "Lapidação Bruta", null, "stone"], ["watchtower", 1.6, "Torre de Vigia"], ["house", 1.4, "Casa do Mestre", null, "stone"], ["forge", 1.3, "Forja do Aprendiz"], ["house", 1.4, "Casa da Guarda"], ["barn", 1.4, "Depósito de Trilhos"], ["house2", 1.4, "Templo da Bigorna", null, "stone"], ["house", 1.4, "Cervejaria Anã", null, "stone"], ["forge", 1.3, "Fornalha Leste"], ["barn", 1.4, "Estábulo de Pôneis", null, "stone"]],
+  solkar: [["dome", 1.3, "Palácio do Oásis", "salao"], ["tavern", 1.5, "Taverna da Areia", "taverna"], ["dome", 1.1, "Templo do Sol"], ["dome", 1.1, "Casa das Gemas"], ["house_thatch", 1.5, "Guilda dos Joalheiros"], ["tent", 1.6, "Tenda do Caravaneiro"], ["tent", 1.6, "Tenda das Especiarias"], ["barn", 1.4, "Armazém de Água"], ["house_thatch2", 1.4, "Lapidário"], ["dome", 1, "Banho Público"], ["tent", 1.5, "Tenda dos Tecidos"], ["house_thatch", 1.4, "Estábulo de Camelos"], ["watchtower", 1.5, "Torre de Areia"], ["dome", 1, "Observatório"], ["dome", 1, "Jardins Suspensos"], ["tent", 1.5, "Tenda dos Perfumes"], ["house_thatch", 1.4, "Casa da Água"], ["dome", 1, "Biblioteca do Deserto"], ["tent", 1.5, "Tenda do Ourives"], ["house_thatch2", 1.4, "Caravançará"]],
+  sylvana: [["witch_hut", 1.8, "Taverna da Raiz", "taverna"], ["house_thatch", 1.7, "Salão dos Druidas", "salao"], ["witch_hut", 1.6, "Alquimia Verde"], ["house_thatch2", 1.6, "Guilda dos Lenhadores"], ["barn", 1.5, "Serraria Élfica"], ["witch_hut", 1.5, "Herbanário"], ["house_thatch", 1.5, "Casa da Seiva"], ["house_thatch2", 1.5, "Arqueiros da Copa"], ["witch_hut", 1.4, "Viveiro"], ["house_thatch", 1.4, "Ateliê de Arcos"], ["barn", 1.4, "Celeiro de Ervas"], ["witch_hut", 1.4, "Casa da Anciã"], ["house_thatch2", 1.4, "Tecelagem"], ["house_thatch", 1.4, "Mel e Cera"], ["witch_hut", 1.5, "Santuário Druídico"], ["house_thatch", 1.4, "Casa dos Guardiões"], ["witch_hut", 1.4, "Jardim de Ervas Raras"], ["house_thatch2", 1.4, "Escola de Runas"], ["barn", 1.4, "Celeiro de Sementes"], ["witch_hut", 1.4, "Casa do Mel Dourado"]],
+  nocthar: [["cathedral", 1, "Catedral Arcana", "salao"], ["tavern", 1.5, "Taverna da Lua Negra", "taverna"], ["darktower", .8, "Biblioteca Proibida"], ["house2", 1.6, "Guilda dos Encantadores", null, "void"], ["house", 1.5, "Mercado Negro", null, "void"], ["darktower", .7, "Ossuário"], ["house2", 1.5, "Relicário", null, "void"], ["house", 1.4, "Casa das Velas", null, "void"], ["barn", 1.4, "Cripta", null, "void"], ["house2", 1.4, "Alquimia Sombria", null, "void"], ["house", 1.4, "Escriba", null, "void"], ["darktower", .7, "Vigia do Abismo"], ["house2", 1.4, "Casa do Necromante", null, "void"], ["house", 1.4, "Pousada Sombria", null, "void"], ["house2", 1.4, "Templo das Sombras", null, "void"], ["house", 1.4, "Casa do Cartógrafo", null, "void"], ["barn", 1.4, "Mausoléu", null, "void"], ["house2", 1.4, "Conselho Arcano", null, "void"], ["house", 1.4, "Loja de Pergaminhos", null, "void"], ["darktower", .6, "Observatório Lunar"]] };
 const SMALL = { valen: ["house", "house2", "house_thatch"], khazad: ["house2", "house"], solkar: ["house_thatch", "house_thatch2", "tent"], sylvana: ["house_thatch", "house_thatch2", "witch_hut"], nocthar: ["house", "house2"] };
 const GARDEN = { valen: ["barrel", "crate", "crate_stack", "flower_bed", "bush"], khazad: ["barrel", "cart", "weapon_rack", "crate"], solkar: ["well", "barrel", "flower_bed"], sylvana: ["flower_bed", "bush", "berry_bush", "statue"], nocthar: ["skull", "candle", "bone_pile", "relic"] };
 const ROOMS_OUT = [];
 for (const c of cities.filter(c => !c.heart)) {
   const B2 = c.buildings = [], used = [], rnd = (a, b, s) => hashTile(Math.round(a), Math.round(b), s);
   const free = (x, y, r) => !used.some(([ux, uy, ur]) => Math.hypot(ux - x, uy - y) < r + ur);
-  const add = (o, r) => { o.x = Math.round(o.x); o.y = Math.round(o.y); if (c.id === "solkar" && o.kind !== "palm" && o.kind !== "bazaar" && Math.hypot(o.x - c.x, o.y - c.y - 22) < 15) return o; used.push([o.x, o.y, r]); B2.push(o); return o; };
+  const wet = (x, y, fw = 1, fh = 1) => { for (let dy = -fh - 1; dy <= 1; dy++) for (let dx = -Math.ceil(fw / 2) - 1; dx <= Math.ceil(fw / 2) + 1; dx++) { const w = cityWater(c, x + dx + .5, y + dy + .5); if (w && !w.bridge) return true; } return false; };
+  const add = (o, r) => { o.x = Math.round(o.x); o.y = Math.round(o.y); if (!o.outside && o.kind !== "cwall" && o.kind !== "ctower" && wet(o.x, o.y, o.fw || 1, o.fh || 1)) return o; if (c.id === "solkar" && o.kind !== "palm" && o.kind !== "bazaar" && Math.hypot(o.x - c.x, o.y - c.y - 22) < 15) return o; used.push([o.x, o.y, r]); B2.push(o); return o; };
   // muralha poligonal (vértices dentro da elipse da cidade), torres nos cantos, portões onde passam as avenidas
   const P = POLY[c.id], verts = []; for (let k = 0; k < P.n; k++) { const a = k / P.n * 6.283 + (P.rot || 0), f = P.r[0] + (P.r[1] - P.r[0]) * rnd(k, c.x, 171); verts.push([c.x + Math.cos(a) * c.rx * f, c.y + Math.sin(a) * c.ry * f, a]); }
   const gates = []; for (const [gx, gy] of [[1, 0], [0, 1], [-1, 0], [0, -1]]) { for (let k = 0; k < P.n; k++) { const A = verts[k], Bv = verts[(k + 1) % P.n];
@@ -160,6 +167,7 @@ for (const c of cities.filter(c => !c.heart)) {
   const isOpen = a => { if (!P.open) return false; let v = Math.atan2(Math.sin(a), Math.cos(a)); return v > P.open[0] && v < P.open[1]; };
   for (let k = 0; k < P.n; k++) { const A = verts[k], Bv = verts[(k + 1) % P.n], L = Math.hypot(Bv[0] - A[0], Bv[1] - A[1]), mid = Math.atan2((A[1] + Bv[1]) / 2 - c.y, (A[0] + Bv[0]) / 2 - c.x);
     if (isOpen(mid)) continue;
+    if (c.id === "sylvana") { for (let s2 = 0; s2 <= L; s2 += 3) { const x = A[0] + (Bv[0] - A[0]) * s2 / L, y = A[1] + (Bv[1] - A[1]) * s2 / L; if (gates.some(g => Math.hypot(g[0] - x, g[1] - y) < 5)) continue; if (free(x, y, 1.2)) add({ x, y, kind: "tree", sprite: rnd(x, y, 179) < .7 ? "oak" : "pine", big: 2.6 + rnd(x, y, 180) * 1.2, tint: "ancient", solid: true }, 1.4); } continue; }
     if (!isOpen(A[2]) && free(A[0], A[1], 1)) add({ x: A[0], y: A[1], kind: "ctower", theme: c.id, fw: 2, fh: 2 }, 2.4);
     for (let s = 0; s <= L; s += 1) { const x = A[0] + (Bv[0] - A[0]) * s / L, y = A[1] + (Bv[1] - A[1]) * s / L;
       const g = gates.find(g => Math.hypot(g[0] - x, g[1] - y) < 4.6); if (g) continue;
@@ -176,19 +184,27 @@ for (const c of cities.filter(c => !c.heart)) {
   const blocks = []; for (let j = -5; j <= 4; j++) for (let i = -5; i <= 4; i++) { const x = c.x + STREET_X / 2 + i * STREET_X, y = c.y + STREET_Y / 2 + j * STREET_Y;
     if (Math.abs(x - c.x) < 14 && Math.abs(y - c.y) < 12) continue; if (inside(x, y, .04)) blocks.push([x, y, Math.hypot((x - c.x) / c.rx, (y - c.y) / c.ry)]); }
   blocks.sort((a, b) => a[2] - b[2]);
-  const lands = LAND[c.id].slice(0, 12 + Math.floor(rnd(c.x, c.y, 172) * 5)); let bi = 0;
+  const lands = LAND[c.id].slice(0, 16 + Math.floor(rnd(c.x, c.y, 172) * 5)); let bi = 0;
+  const spare = blocks.flatMap(b => [[b[0] - 4.5, b[1] - 2], [b[0] + 4.5, b[1] - 2]]);
   // prédio principal (o que tem o salão) de frente pra praça, no centro norte
-  { const [sp, sc, label, room, tint] = LAND[c.id].find(l => l[3] === "salao"), kind = ["castle", "darktower", "dome", "forge", "forgecitadel"].includes(sp) ? sp : "building";
-    const fw = kind === "forgecitadel" ? 9 : kind === "castle" ? 7 : Math.round(3 * (kind === "building" ? sc : 1)) + 1, fh = kind === "forgecitadel" ? 5 : kind === "castle" ? 4 : Math.round(2 * (kind === "building" ? sc : 1));
+  { const [sp, sc, label, room, tint] = LAND[c.id].find(l => l[3] === "salao"), kind = ["castle", "darktower", "dome", "forge", "forgecitadel", "cathedral"].includes(sp) ? sp : "building";
+    const fw = kind === "forgecitadel" || kind === "cathedral" ? 9 : kind === "castle" ? 7 : Math.round(3 * (kind === "building" ? sc : 1)) + 1, fh = kind === "forgecitadel" ? 5 : kind === "castle" ? 4 : Math.round(2 * (kind === "building" ? sc : 1));
     const o = add({ x: c.x, y: c.y - 10, kind, sprite: kind === "building" ? sp : undefined, scale: kind === "building" ? sc * 1.2 : undefined, small: kind === "castle" ? true : undefined, fw, fh, tint: tint || null, label, door: `${c.id}_${room}` }, 5);
     ROOMS_OUT.push({ id: `${c.id}_${room}`, city: c.id, name: `${label} · ${c.name}`, outside: { x: o.x, y: o.y + 1 }, kind: room }); }
-  for (const [sp, sc, label, room, tint] of lands.filter(l => l[3] !== "salao")) { while (bi < blocks.length && (c.id === "solkar" && Math.hypot(blocks[bi][0] - c.x, blocks[bi][1] - c.y - 22) < 18)) bi++; const bk = blocks[bi++]; if (!bk) break;
-    const kind = ["castle", "darktower", "dome", "forge", "forgecitadel"].includes(sp) ? sp : "building";
+  for (const [sp, sc, label, room, tint] of lands.filter(l => l[3] !== "salao")) {
+    const kind = ["castle", "darktower", "dome", "forge", "forgecitadel", "cathedral"].includes(sp) ? sp : "building";
     const fw = Math.round((kind === "forgecitadel" ? 9 : kind === "castle" ? 7 : 3) * (kind === "building" ? sc : 1)), fh = Math.round((kind === "forgecitadel" ? 5 : kind === "castle" ? 4 : 2) * (kind === "building" ? sc : 1));
+    // próximo quarteirão livre (fora do lago de Solkar e sem canal/lava/riacho embaixo)
+    while (bi < blocks.length && ((c.id === "solkar" && Math.hypot(blocks[bi][0] - c.x, blocks[bi][1] - c.y - 22) < 18) || wet(Math.round(blocks[bi][0]), Math.round(blocks[bi][1] + 2), fw, fh))) bi++;
+    let bk = blocks[bi++]; if (!bk && fw <= 6) { while (spare.length) { const p2 = spare.shift(); if (!wet(Math.round(p2[0]), Math.round(p2[1] + 2), fw, fh) && free(p2[0], p2[1] + 2, 2)) { bk = p2; break; } } } if (!bk) break;
     const o = add({ x: bk[0], y: bk[1] + 2, kind, sprite: kind === "building" ? sp : undefined, scale: kind === "building" ? sc : undefined, small: kind === "castle" ? true : undefined, fw, fh, tint: tint || null, label, door: room ? `${c.id}_${room}` : undefined }, Math.max(fw, fh) * .8);
     if (room) ROOMS_OUT.push({ id: `${c.id}_${room}`, city: c.id, name: `${label} · ${c.name}`, outside: { x: o.x, y: o.y + 1 }, kind: room });
     // a casa tem lote: canteiro/caixas do tema ao lado
     const gp = GARDEN[c.id]; for (const s of [-1, 1]) { const x = bk[0] + s * (fw / 2 + 2), y = bk[1] + 2; if (!onStreet(c, x, y) && free(x, y, .8)) add({ x, y, kind: "building", sprite: gp[Math.floor(rnd(x, y, 173) * gp.length)], fw: 1, fh: 1 }, .8); } }
+  const GROVE = { valen: [["palm", 1], ["tree_round", 1]], khazad: [["pine", 1, "deep"], ["pine_small", 1, "deep"]], solkar: [["palm", 1], ["palm", 1.2]], sylvana: [["oak", 2.2, "ancient"], ["pine", 1.8, "ancient"]], nocthar: [["dead", 1.3, "void"], ["dead", 1, "void"]] };
+  const groveTree = (x, y, k) => { const [sp, big, tint] = GROVE[c.id][k % GROVE[c.id].length]; return sp === "palm" ? { x, y, kind: "palm" } : { x, y, kind: "tree", sprite: sp, big: big * (.9 + rnd(x, y, 181) * .3), tint: tint || null, solid: true }; };
+  const gshare = c.id === "solkar" || c.id === "sylvana" ? .5 : .3, gn = c.id === "solkar" || c.id === "sylvana" ? 15 : 10;
+  for (const [bx, by] of blocks.slice(bi).filter((_, k) => rnd(k, c.x, 182) < gshare)) { for (let k = 0; k < gn; k++) { const x = bx + (rnd(k, bx, 183) - .5) * 11, y = by + (rnd(k, by, 184) - .5) * 9; if (inside(x, y) && !onStreet(c, x, y) && free(x, y, 1.3)) add(groveTree(x, y, k), 1.3); } used.push([bx, by, 6]); }
   // quarteirões restantes: 2 a 4 casas menores com jardins (mesma densidade da Vila de Arken)
   for (const [bx, by] of blocks.slice(bi)) for (const [ox, oy] of [[-4, -3], [4, -3], [-4, 3], [4, 3]]) { const x = bx + ox, y = by + oy + 1; if (!inside(x, y) || onStreet(c, x, y) || !free(x, y, 2.3)) continue;
     const r = rnd(x, y, 174); if (r < .62) add({ x, y, kind: "building", sprite: SMALL[c.id][Math.floor(rnd(x, y, 175) * SMALL[c.id].length)], fw: 3, fh: 2, tint: c.id === "nocthar" ? "void" : null }, 2.3);
@@ -196,10 +212,14 @@ for (const c of cities.filter(c => !c.heart)) {
     else if (c.id === "sylvana" || c.id === "valen") add({ x, y, kind: "tree", sprite: c.id === "sylvana" ? "oak" : "tree_round", big: c.id === "sylvana" ? 2.2 : 1, tint: c.id === "sylvana" ? "ancient" : null, solid: true }, 2); }
   // detalhes do tema dentro dos muros
   if (c.id === "solkar") for (let k = 0; k < 14; k++) { const a = k / 14 * 6.283; const x = c.x + Math.cos(a) * 17, y = c.y + 22 + Math.sin(a) * 14; if (free(x, y, 1)) add(k % 2 ? { x, y, kind: "palm" } : { x, y, kind: "bazaar", hue: k }, 1.2); }
-  if (c.id === "khazad") { const g0 = c.gates.find(g => g[0] > c.x) || c.gates[0]; for (let x = c.x + 14; x < g0[0] - 6; x++) if (!B2.some(o => o.x === x && Math.abs(o.y - (c.y + 4)) < 2)) B2.push({ x, y: c.y + 4, kind: "rail", solid: false }); }
+  if (c.id === "khazad") { const g0 = c.gates.find(g => g[0] > c.x) || c.gates[0]; for (let x = c.x + 14; x < g0[0] - 6; x++) if (!B2.some(o => o.x === x && Math.abs(o.y - (c.y + 4)) < 2) && !wet(x, c.y + 4)) B2.push({ x, y: c.y + 4, kind: "rail", solid: false }); }
   if (c.id === "sylvana") for (let k = 0; k < 18; k++) { const a = k / 18 * 6.283 + .1, x = c.x + Math.cos(a) * c.rx * .62, y = c.y + Math.sin(a) * c.ry * .62; if (!onStreet(c, x, y) && free(x, y, 2)) add({ x, y, kind: "tree", sprite: "oak", big: 2.4, tint: "ancient", solid: true }, 2); }
   // arredores: posto de guarda em cada estrada que chega, e o "entorno" temático da cidade
   const outside = [];
+  // cinturão de mata/bosque em volta dos muros (tema de cada cidade)
+  for (let k = 0; k < 520; k++) { const a = rnd(k, c.x, 185) * 6.283, d = 1.06 + rnd(k, c.y, 186) * .55; const x = c.x + Math.cos(a) * c.rx * d, y = c.y + Math.sin(a) * c.ry * d; if (P.open && isOpen(a)) continue; outside.push({ ...groveTree(x, y, k), grove: true }); }
+  if (c.id === "nocthar") for (const g of c.gates) for (let k = 1; k < 6; k++) { const dx = Math.sign(g[0] - c.x), dy = Math.sign(g[1] - c.y); for (const s2 of [-1, 1]) add({ x: c.x + dx * k * 8 + (dy ? s2 * 3.5 : 0), y: c.y + dy * k * 8 + (dx ? s2 * 3.5 : 0), kind: "ptorch" }, .6); }
+  if (c.id === "valen") for (const [dx, dy] of [[30, -6], [34, -6], [30, 6], [34, 6], [38, 0]]) add({ x: c.x + dx, y: c.y + dy, kind: "building", sprite: dx === 38 ? "fish" : "stall", fw: 2, fh: 1, label: dx === 38 ? "Mercado de Peixe" : undefined }, 1.5);
   for (const g of c.gates) { const gx = g[0] + Math.sign(g[0] - c.x) * 50, gy = g[1] + Math.sign(g[1] - c.y) * 50, px = gx + (g[1] === c.y ? 0 : 5), py = gy + (g[0] === c.x ? 0 : 5);
     outside.push({ x: px, y: py, kind: "building", sprite: "watchtower", fw: 2, fh: 2, scale: 1.2 }, { x: px + 3, y: py + 1, kind: "building", sprite: "banner", fw: 1, fh: 1 }, { x: px - 3, y: py + 2, kind: "building", sprite: "campfire", fw: 1, fh: 1 }, { x: px + 2, y: py + 4, kind: "building", sprite: "tent", fw: 3, fh: 2 }); }
   const ring = (n, R, fn) => { for (let k = 0; k < n; k++) { const a = rnd(k, c.x, 177) * 6.283, d = R * (1 + rnd(k, c.y, 178) * .5); fn(c.x + Math.cos(a) * c.rx * d, c.y + Math.sin(a) * c.ry * d, k); } };
@@ -210,7 +230,7 @@ for (const c of cities.filter(c => !c.heart)) {
   if (c.id === "sylvana") ring(3, 1.8, (x, y) => outside.push({ x, y, kind: "building", sprite: "barn", fw: 3, fh: 2 }, { x: x + 4, y: y + 2, kind: "building", sprite: "log", fw: 1, fh: 1 }, { x: x - 4, y: y + 2, kind: "building", sprite: "stump", fw: 1, fh: 1 }, { x: x + 1, y: y + 4, kind: "building", sprite: "cart", fw: 2, fh: 1 }));
   if (c.id === "nocthar") ring(4, 1.7, (x, y) => { for (let k = 0; k < 6; k++) { const a = k / 6 * 6.283; outside.push({ x: x + Math.cos(a) * 5, y: y + Math.sin(a) * 4, kind: k % 2 ? "crystal" : "building", sprite: "candle", fw: 1, fh: 1 }); } outside.push({ x, y, kind: "building", sprite: "statue", fw: 1, fh: 1 }); });
   if (c.id === "valen" || c.id === "khazad") ring(2, 2.1, (x, y) => outside.push({ x, y, kind: "farm", fw: 12, fh: 8, solid: false, crop: c.id === "khazad" ? "soil" : "wheat" }, { x: x + 8, y, kind: "building", sprite: "barn", fw: 3, fh: 2 }, { x: x - 8, y: y + 1, kind: "building", sprite: "haystack", fw: 1, fh: 1 }));
-  for (const o of outside) { o.x = Math.round(o.x); o.y = Math.round(o.y); o.outside = true; const t = tileAt(o.x, o.y); if (isBlocked(t) || t === B.ROAD || t === B.BRIDGE || t === B.HEART) continue; if (Math.hypot((o.x - c.x) / c.rx, (o.y - c.y) / c.ry) < 1.15) continue; B2.push(o); }
+  for (const o of outside) { o.x = Math.round(o.x); o.y = Math.round(o.y); o.outside = true; const t = tileAt(o.x, o.y); if (isBlocked(t) || t === B.ROAD || t === B.BRIDGE || t === B.HEART || t === B.DOCK || t === B.BEACH) continue; if (o.grove && (clearNear(o.x, o.y) || [tileAt(o.x + 1, o.y), tileAt(o.x - 1, o.y), tileAt(o.x, o.y + 1), tileAt(o.x, o.y - 1)].some(b => b === B.ROAD || b === B.BRIDGE))) continue; if (Math.hypot((o.x - c.x) / c.rx, (o.y - c.y) / c.ry) < 1.15) continue; B2.push(o); }
 }
 const CITY_ROOMS = ROOMS_OUT;
 log("construções ok");
@@ -310,6 +330,46 @@ for (const c of cities.filter(c => !c.heart)) for (let k = 1; k <= 3; k++) {
   for (const [j, kind] of kinds.entries()) { let p = null; for (let t = 0; t < 80 && !p; t++) { const a = hashTile(j, t, 97 + k) * 6.283, rr = 14 + t * .6; const x = Math.round(h0.cx + Math.cos(a) * rr), y = Math.round(h0.cy + Math.sin(a) * rr); const b = tileAt(x, y); if (!isBlocked(b) && b !== B.ROAD && b !== B.CITY && b !== B.HEART && okArea(x, y, 1.5) && labAt(x, y) % 3 + 1 === k) p = [x, y]; }
     if (p) nodes.push({ id: `${c.id}_${kind}_${k}`, kind, x: p[0], y: p[1], city: c.id, ring: k, owner: k === 3 ? "city:" + c.id : null }); }
 }
+// ---------- grandes lagoas: píer na margem mais perto da estrada, desembarque na margem oposta, barco, pesca rara e barqueiro ----------
+const extras = [], boatPorts = [], pendingFish = [];
+{ const LC = 6, LW = Math.ceil(SIZE / LC), mask = new Uint8Array(LW * LW), comp = new Int32Array(LW * LW).fill(-1);
+  for (let j = 0; j < LW; j++) for (let i = 0; i < LW; i++) if (baseBiome(i * LC + 3, j * LC + 3) === B.LAKE) mask[j * LW + i] = 1;
+  const comps = []; for (let k = 0; k < LW * LW; k++) if (mask[k] && comp[k] < 0) { const q = [k], cells = []; comp[k] = comps.length; while (q.length) { const c2 = q.pop(); cells.push(c2); const i = c2 % LW, j = (c2 / LW) | 0;
+      for (const [di, dj] of [[1, 0], [-1, 0], [0, 1], [0, -1]]) { const ni = i + di, nj = j + dj; if (ni < 0 || nj < 0 || ni >= LW || nj >= LW) continue; const nk = nj * LW + ni; if (mask[nk] && comp[nk] < 0) { comp[nk] = comps.length; q.push(nk); } } } comps.push(cells); }
+  const roadPts = []; for (const r of roads) for (let i = 0; i < r.pts.length; i += 4) roadPts.push(r.pts[i]);
+  const toL = k => [(k % LW) * LC - OX + 3, ((k / LW) | 0) * LC - OY + 3];
+  let n = 0;
+  for (const cells of comps) { if (cells.length < 110) continue;
+    const pts = cells.map(toL), cx = pts.reduce((a, p) => a + p[0], 0) / pts.length, cy = pts.reduce((a, p) => a + p[1], 0) / pts.length;
+    if (cities.some(c => !c.heart && Math.hypot(c.x - cx, c.y - cy) < 200) || (cx > -60 && cy > -60 && cx < 360 && cy < 260)) continue;
+    const shore = cells.filter(k => { const i = k % LW, j = (k / LW) | 0; return [[1, 0], [-1, 0], [0, 1], [0, -1]].some(([di, dj]) => !mask[(j + dj) * LW + i + di]); }).map(toL);
+    if (shore.length < 8) continue;
+    const dRoad = p => { let b = 1e9; for (const q of roadPts) { const d = Math.hypot(q[0] - p[0], q[1] - p[1]); if (d < b) b = d; } return b; };
+    const A = shore.reduce((best, p) => dRoad(p) < dRoad(best) ? p : best, shore[0]);
+    const Bp = shore.reduce((best, p) => Math.hypot(p[0] - A[0], p[1] - A[1]) > Math.hypot(best[0] - A[0], best[1] - A[1]) ? p : best, shore[0]);
+    const name = SYL1[Math.floor(hashTile(Math.round(cx), Math.round(cy), 141) * SYL1.length)] + SYL2[Math.floor(hashTile(Math.round(cx), Math.round(cy), 142) * SYL2.length)];
+    const id = `lago${++n}`;
+    for (const [side, P] of [["a", A], ["b", Bp]]) {
+      // anda da margem pra fora (pra terra) até achar chão firme; o píer entra na água em direção ao centro
+      const ux = P[0] - cx, uy = P[1] - cy, L = Math.hypot(ux, uy) || 1, dx = ux / L, dy = uy / L; let lx = P[0], ly = P[1], ok = false;
+      for (let t = 0; t < 40; t++) { const b = tileAt(Math.round(lx), Math.round(ly)); if (!isBlocked(b) && b !== B.HEART && b !== B.CITY) { ok = true; break; } lx += dx; ly += dy; }
+      if (!ok) continue; lx = Math.round(lx); ly = Math.round(ly);
+      const ex = Math.round(lx - dx * 11), ey = Math.round(ly - dy * 11), pid = `${id}${side}`, label = side === "a" ? `Píer do Lago ${name}` : `Margem Leste do Lago ${name}`;
+      ports.push({ lake: id, x: lx, y: ly, docks: [[[lx + dx * 1.5, ly + dy * 1.5], [ex, ey]]], ships: [] });
+      extras.push({ x: lx + Math.round(-dy * 2), y: ly + Math.round(dx * 2), kind: "building", sprite: "lantern_fence", fw: 1, fh: 1 }, { x: lx - Math.round(-dy * 2), y: ly - Math.round(dx * 2), kind: "building", sprite: "lantern_fence", fw: 1, fh: 1 },
+        { x: lx + Math.round(dx * 2 - dy * 3), y: ly + Math.round(dy * 2 + dx * 3), kind: "building", sprite: side === "a" ? "crate_stack" : "crate", fw: 1, fh: 1 },
+        { x: Math.round(ex - dy * 2), y: Math.round(ey + dx * 2), kind: "boat", solid: false });
+      boatPorts.push({ id: pid, name: side === "a" ? `Píer do Lago ${name}` : `Margem oposta do Lago ${name}`, lake: id, x: lx, y: ly, npc: [lx + Math.round(dx * 2), ly + Math.round(dy * 2)] });
+      if (side === "a") pendingFish.push({ id, lx, ly, dx, dy });
+    }
+  }
+  { const c = cities.find(q => q.id === "valen"), d0 = ports[0].docks[0][0]; boatPorts.push({ id: "valen_porto", name: "Porto de Valen", lake: null, x: Math.round(d0[0]) - 2, y: Math.round(d0[1]), npc: [Math.round(d0[0]) - 1, Math.round(d0[1]) + 2] }); }
+  log("lagoas com píer", n, "portos de barco", boatPorts.length);
+}
+initNet({ cities, rivers, roads, ports, lakes, edge });
+// pesca rara: dois pontos em cima do píer (tiles de doca de verdade, do meio pra ponta)
+for (const f of pendingFish) { const got = []; for (let t = 11; t >= 3 && got.length < 2; t -= .5) { const x = Math.round(f.lx - f.dx * t), y = Math.round(f.ly - f.dy * t); if (tileAt(x, y) === B.DOCK && !got.some(g => Math.hypot(g[0] - x, g[1] - y) < 3)) got.push([x, y]); }
+  got.forEach((g, i) => nodes.push({ id: `${f.id}_pesca_${i + 1}`, kind: "pesca_lagoa", x: g[0], y: g[1], city: null, ring: null, owner: null, lake: f.id })); }
 // ---------- marcos onde as estradas mudam de nível: bandeiras âmbar (1↔2) e monólitos vermelhos com tochas (2↔3) ----------
 for (const r of roads) { let prev = null; for (let i = 1; i < r.pts.length; i++) { const [a, b] = [r.pts[i - 1], r.pts[i]], n = Math.ceil(Math.hypot(b[0] - a[0], b[1] - a[1]) / 1.5);
   for (let s2 = 0; s2 <= n; s2++) { const x = a[0] + (b[0] - a[0]) * s2 / n, y = a[1] + (b[1] - a[1]) * s2 / n; const v = labAt(x, y); if (v < 0) continue; const t = v % 3 + 1;
@@ -336,7 +396,7 @@ log("pontos de estrada", wpN.length, "ligações", wpE.length);
 
 // ---------- validação: nada importante bloqueado ----------
 const problems = [];
-for (const c of cities.filter(c => !c.heart)) { if (isBlocked(tileAt(c.x, c.y))) problems.push("cidade bloqueada " + c.id); for (const o of c.buildings) if (!o.outside && tileAt(o.x, o.y) !== B.CITY) problems.push(`construção fora do calçamento ${c.id} ${o.sprite} ${tileAt(o.x, o.y)}`); }
+for (const c of cities.filter(c => !c.heart)) { if (isBlocked(tileAt(c.x, c.y))) problems.push("cidade bloqueada " + c.id); for (const o of c.buildings) if (!o.outside && tileAt(o.x, o.y) !== B.CITY && !((o.kind === "cwall" || o.kind === "ctower") && [B.RIVER, B.LAVA, B.MURKY, B.BRIDGE].includes(tileAt(o.x, o.y)))) problems.push(`construção fora do calçamento ${c.id} ${o.sprite} ${tileAt(o.x, o.y)}`); }
 for (const n of nodes) if (isBlocked(tileAt(n.x, n.y))) problems.push("depósito bloqueado " + n.id);
 for (const h of hunts) if (!okArea(h.cx, h.cy, 6)) problems.push("caça bloqueada " + h.id);
 for (const r of roads) for (let i = 0; i < r.pts.length; i += 2) { const [x, y] = r.pts[i].map(Math.floor); const b = tileAt(x, y); if (b !== B.HEART && isBlocked(b)) { problems.push(`estrada bloqueada ${r.from}-${r.to} em ${x},${y} (${b})`); break; } }
@@ -352,7 +412,7 @@ for (const r of rivers) for (let i = 1; i < r.pts.length; i++) line(r.pts[i - 1]
 for (const r of roads) for (let i = 1; i < r.pts.length; i++) line(r.pts[i - 1], r.pts[i], [172, 131, 83]);
 fs.writeFileSync(`${OUT}/world-overview.rgb`, rgb);
 
-const net = { version: 3, size: SIZE, ox: OX, oy: OY, cities, rivers, roads, ports, lakes, edge, hunts, monsters, nodes, wp, territory, markers, rooms: CITY_ROOMS };
+const net = { version: 4, size: SIZE, ox: OX, oy: OY, cities, rivers, roads, ports, lakes, edge, hunts, monsters, nodes, wp, territory, markers, rooms: CITY_ROOMS, extras, boats: boatPorts };
 fs.writeFileSync(new URL("../assets/world-net.json", import.meta.url), JSON.stringify(net));
 fs.writeFileSync(`${OUT}/world-gen.json`, JSON.stringify({ hunts, monsters, nodes, cities: cities.map(({ buildings, ...c }) => c), problems }, null, 1));
 log("pronto: assets/world-net.json", (JSON.stringify(net).length / 1024).toFixed(0) + " KB");

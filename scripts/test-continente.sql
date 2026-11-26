@@ -124,6 +124,18 @@ set local role authenticated; select pg_temp.as_(:'tuid');
 do $$ begin perform gather_start((select id from resource_nodes where owner = 'city:valen' limit 1)); insert into r values ('t17_exclusivo', 'COLETOU (erro)'); exception when others then insert into r values ('t17_exclusivo', sqlerrm); end $$;
 insert into r select 't18_cidades_view', jsonb_array_length(cities_view())::text;
 insert into r select 't18_dono_valen', (select x -> 'owner' ->> 'tag' from jsonb_array_elements(cities_view()) x where x ->> 'id' = 'valen');
+-- 19. barqueiro: atravessar a lagoa custa 15; viagem longa entre 50 e 250; longe do píer é recusado
+reset role;
+select id as pa, x as pax, y as pay, lake as plake from boat_ports where lake is not null and id like '%a' order by id limit 1 \gset
+select id as pb from boat_ports where lake = :'plake' and id <> :'pa' limit 1 \gset
+update characters set task = 'idle', hunt_id = null, x = :pax, y = :pay, pos_at = now() where id = :'tid'; update hunt_sessions set status = 'encerrada' where character_id = :'tid' and status = 'ativa';
+set local role authenticated; select pg_temp.as_(:'tuid');
+insert into r select 't19_travessia', (boat_travel(:'pa', :'pb') ->> 'cost');
+reset role; update characters set x = :pax, y = :pay, pos_at = now() where id = :'tid';
+set local role authenticated; select pg_temp.as_(:'tuid');
+select (boat_travel(:'pa', 'valen_porto') ->> 'cost')::int as longcost \gset
+insert into r select 't19_viagem_longa', (:longcost between 50 and 250)::text;
+do $$ begin perform boat_travel((select id from boat_ports where lake is not null and id like '%a' order by id limit 1), 'valen_porto'); insert into r values ('t19_longe_do_pier', 'EMBARCOU (erro)'); exception when others then insert into r values ('t19_longe_do_pier', sqlerrm); end $$;
 reset role;
 select k || ' => ' || coalesce(v, 'NULL') from r order by k;
 rollback;

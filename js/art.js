@@ -167,11 +167,15 @@ export function chunkAt(cx, cy) {
 // desenha alinhado aos pixels da tela (sem frestas nem linhas entre pedaços em qualquer zoom)
 function snapDraw(g, img, x, y, w, h) { const m = g.getTransform(), x0 = Math.round(m.a * x + m.e), y0 = Math.round(m.d * y + m.f), x1 = Math.round(m.a * (x + w) + m.e), y1 = Math.round(m.d * (y + h) + m.f);
   g.save(); g.setTransform(1, 0, 0, 1, 0, 0); g.drawImage(img, x0, y0, x1 - x0, y1 - y0); g.restore(); }
-export function drawGround(g, camX, camY, VW, VH) {
+export const GROUND = { until: 0, fallback: null };   // teto de tempo por quadro pra montar pedaços do coração
+export function drawGround(g, camX, camY, VW, VH, roomsOnly = false) {
   const x0 = Math.floor(camX / (CH * T)), y0 = Math.floor(camY / (CH * T)), x1 = Math.floor((camX + VW) / (CH * T)), y1 = Math.floor((camY + VH) / (CH * T));
   // coração recortado no retângulo exato (o continente aparece em volta); interiores na faixa a partir de IY
   g.save(); g.beginPath(); g.rect(0, 0, MW * T, MH * T); g.rect(0, IY * T, MW * T, (MHA - IYR) * T); g.clip();
-  for (let cy = y0; cy <= y1; cy++) for (let cx = x0; cx <= x1; cx++) { if (cx < 0 || cy < 0 || cx * CH >= MW) continue; const heart = cy * CH < MH, room = cy * CH >= IY && cy * CH < IY + (MHA - IYR); if (!heart && !room) continue; snapDraw(g, chunkAt(cx, cy), cx * CH * T, cy * CH * T, CH * T, CH * T); }
+  for (let cy = y0; cy <= y1; cy++) for (let cx = x0; cx <= x1; cx++) { if (cx < 0 || cy < 0 || cx * CH >= MW) continue; const heart = cy * CH < MH && !roomsOnly, room = cy * CH >= IY && cy * CH < IY + (MHA - IYR); if (!heart && !room) continue;
+    // nunca trava: pedaço ainda não montado e acabou o tempo do quadro → desenha o substituto (vista distante) e monta depois
+    if (!chunks.has(cx + "," + cy) && heart && !room && performance.now() > GROUND.until && GROUND.fallback) { GROUND.fallback(g, cx * CH, cy * CH, CH, CH); continue; }
+    snapDraw(g, chunkAt(cx, cy), cx * CH * T, cy * CH * T, CH * T, CH * T); }
   g.restore();
 }
 
@@ -196,7 +200,7 @@ const TINTS = {
   fire: (r, g, b) => { const l = lum(r, g, b); return [Math.min(255, l * 1.1 + 70), l * .55 + 10, l * .2]; },
   ember: (r, g, b) => { const l = lum(r, g, b); return [l * .55 + 25, l * .4 + 12, l * .35 + 10]; },
 };
-function sprite(name, tint) {
+export function sprite(name, tint) {
   const im = A.sp[name]; if (!im || !tint) return im;
   const k = name + "|" + tint; if (!A.tint[k]) A.tint[k] = recolor(im, TINTS[tint]);
   return A.tint[k];
@@ -208,7 +212,8 @@ function blit(g, name, cx, by, scale = 1, mirror = false, tint = null) {
   return true;
 }
 const rect = (g, x, y, w, h, c) => { g.fillStyle = c; g.fillRect(Math.round(x), Math.round(y), w, h); };
-function shadow(g, cx, by, rx, ry = rx * .4, a = .28) { g.fillStyle = `rgba(10,8,14,${a})`; g.beginPath(); g.ellipse(cx, by - ry * .5, rx, ry, 0, 0, 6.283); g.fill(); }
+export const DETAIL = { low: false };   // zoom afastado: sem sombras (não aparecem e custam caro)
+function shadow(g, cx, by, rx, ry = rx * .4, a = .28) { if (DETAIL.low) return; g.fillStyle = `rgba(10,8,14,${a})`; g.beginPath(); g.ellipse(cx, by - ry * .5, rx, ry, 0, 0, 6.283); g.fill(); }
 
 // ---------- objetos ----------
 function roofTower(g, x, by, w, h, wall, roof, ruin) {
@@ -228,6 +233,12 @@ export function drawObject(g, o) {
       for (let yy = by - h + 14; yy < by; yy += 12) rect(g, cx - w / 2, yy, w, 1, "rgba(0,0,0,.25)"); for (const [dx, th] of [[-w / 2, h + 40], [w / 2, h + 40], [0, h + 70]]) roofTower(g, cx + dx, by, dx ? 46 : 60, th, "#45403f", "#5a2a1a");
       for (const dx of [-70, -20, 40, 90]) { rect(g, cx + dx, by - h - 50, 16, 50, "#2e2a2a"); g.fillStyle = "rgba(90,90,90,.35)"; for (let k = 0; k < 3; k++) { g.beginPath(); g.arc(cx + dx + 8 + Math.sin(t + k) * 4, by - h - 60 - ((t * 9 + k * 14) % 40), 7 + k * 2, 0, 6.283); g.fill(); } }
       g.fillStyle = `rgba(255,${110 + (Math.sin(t) * 40 | 0)},30,.95)`; g.fillRect(cx - 30, by - 44, 60, 30); rect(g, cx - 34, by - 48, 68, 4, "#2a2626"); rect(g, cx - 14, by - 40, 28, 40, "#1e1a1a"); break; }
+    case "cathedral": { const w = 230, h = 120, t = performance.now() / 400; g.fillStyle = "rgba(170,100,255,.18)"; g.beginPath(); g.arc(cx, by - 140, 110, 0, 6.283); g.fill(); shadow(g, cx + 10, by, w * .55, 16);
+      rect(g, cx - w / 2, by - h, w, h, "#2c2240"); rect(g, cx - w / 2, by - h, w, 5, "#4a3868"); for (let xx = -w / 2 + 14; xx < w / 2 - 10; xx += 26) { rect(g, cx + xx, by - h + 22, 10, 40, "#1a1228"); g.fillStyle = `rgba(180,110,255,${.5 + Math.sin(t + xx) * .2})`; g.fillRect(cx + xx + 2, by - h + 26, 6, 32); }
+      for (const [dx, th, tw] of [[-w / 2 + 14, h + 70, 30], [w / 2 - 14, h + 70, 30], [0, h + 120, 44]]) { rect(g, cx + dx - tw / 2, by - th, tw, th, "#33284a"); g.fillStyle = "#1e1630"; g.beginPath(); g.moveTo(cx + dx - tw / 2 - 4, by - th); g.lineTo(cx + dx, by - th - tw * 1.6); g.lineTo(cx + dx + tw / 2 + 4, by - th); g.fill(); g.fillStyle = "#c79cff"; g.beginPath(); g.arc(cx + dx, by - th - tw * 1.6, 4, 0, 6.283); g.fill(); }
+      g.fillStyle = `rgba(200,140,255,${.7 + Math.sin(t) * .2})`; g.beginPath(); g.arc(cx, by - h + 30, 14, 0, 6.283); g.fill(); rect(g, cx - 14, by - 40, 28, 40, "#140e20"); break; }
+    case "ptorch": { const t = performance.now() / 140 + o.x * 3; shadow(g, cx + 2, by, 6); rect(g, cx - 2, by - 34, 4, 34, "#2a2030"); rect(g, cx - 5, by - 36, 10, 4, "#4a3a5a"); g.fillStyle = "rgba(170,90,255,.22)"; g.beginPath(); g.arc(cx, by - 42, 16, 0, 6.283); g.fill();
+      g.fillStyle = `rgb(${190 + (Math.sin(t) * 30 | 0)},120,255)`; g.beginPath(); g.ellipse(cx, by - 42 - Math.sin(t * 1.7), 4, 7 + Math.sin(t) * 1.5, 0, 0, 6.283); g.fill(); break; }
     case "cauldron": { const t = performance.now() / 250 + o.x; shadow(g, cx + 3, by, 14); g.fillStyle = "#1e1c1e"; g.beginPath(); g.ellipse(cx, by - 12, 16, 12, 0, 0, 6.283); g.fill(); rect(g, cx - 18, by - 22, 36, 5, "#3a3638");
       g.fillStyle = `rgba(255,${100 + (Math.sin(t) * 50 | 0)},20,1)`; g.beginPath(); g.ellipse(cx, by - 21, 14, 4, 0, 0, 6.283); g.fill(); g.fillStyle = "rgba(255,140,40,.25)"; g.beginPath(); g.arc(cx, by - 26, 18, 0, 6.283); g.fill(); break; }
     case "rail": { rect(g, cx - 16, by - 18, 32, 3, "#5a5250"); rect(g, cx - 16, by - 10, 32, 3, "#5a5250"); for (let k = -14; k < 16; k += 8) rect(g, cx + k, by - 20, 4, 14, "#6a4a2a"); break; }
@@ -243,7 +254,7 @@ export function drawObject(g, o) {
     case "cwall": { const W = WALLS[o.theme] || WALLS.valen, h = W.h; rect(g, cx - 17, by - h, 34, h, W.c); rect(g, cx - 17, by - h, 34, 4, W.top); for (let yy = by - h + 9; yy < by; yy += 8) rect(g, cx - 17, yy, 34, 1, W.line);
       if (W.spike) { g.fillStyle = W.top; for (let xx = -15; xx < 16; xx += 8) { g.beginPath(); g.moveTo(cx + xx, by - h); g.lineTo(cx + xx + 3, by - h - 8); g.lineTo(cx + xx + 6, by - h); g.fill(); } }
       else for (let xx = -16; xx < 16; xx += 10) rect(g, cx + xx, by - h - 6, 6, 6, W.c); break; }
-    case "ctower": { const W = WALLS[o.theme] || WALLS.valen; shadow(g, cx + 8, by, 26, 10); roofTower(g, cx + 16, by, 46, W.h + 34, W.c, W.roof, false);
+    case "ctower": { const W = WALLS[o.theme] || WALLS.valen; shadow(g, cx + 8, by, 26, 10); if (o.theme === "solkar") { rect(g, cx + 16 - 23, by - W.h - 34, 46, W.h + 34, W.c); rect(g, cx + 16 - 23, by - W.h - 34, 46, 4, W.top); g.fillStyle = "#d9a441"; g.beginPath(); g.arc(cx + 16, by - W.h - 34, 23, Math.PI, 0); g.fill(); g.fillStyle = "#f3c35a"; g.beginPath(); g.arc(cx + 10, by - W.h - 42, 8, Math.PI, 0); g.fill(); } else roofTower(g, cx + 16, by, 46, W.h + 34, W.c, W.roof, false);
       if (W.glow) { g.fillStyle = W.glow; g.beginPath(); g.arc(cx + 16, by - W.h - 50, 7 + Math.sin(performance.now() / 300 + o.x) * 2, 0, 6.283); g.fill(); }
       if (o.gate) { g.fillStyle = W.flag; g.fillRect(cx + 15, by - W.h - 70, 2, 22); g.fillRect(cx + 17, by - W.h - 70, 14, 9); } break; }
     case "crystal": { const t = performance.now() / 500 + o.x; g.fillStyle = `rgba(190,120,255,${.25 + Math.sin(t) * .1})`; g.beginPath(); g.arc(cx, by - 26, 22, 0, 6.283); g.fill(); shadow(g, cx + 3, by, 10);

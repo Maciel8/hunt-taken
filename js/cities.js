@@ -65,6 +65,7 @@ export async function npcAct(npc) {
   if (npc.act === "bank") return openBank(npc);
   if (npc.act === "travel") return openTravel();
   if (npc.act === "port") return import("./worlds.js").then(m => m.openWorlds());
+  if (npc.act === "boat") return openBoat(npc);
 }
 async function openBank(npc) {
   const el = $("npcBox"), w = S.p; const banked = PV.view?.banked ?? 0;
@@ -124,3 +125,21 @@ export function bindCityPanel(root) { const b = root.querySelector("[data-travel
   try { const r = await rpc("travel_city", { p_city: b.dataset.travel }); PV.view = { ...PV.view, ...r }; const p = S.p; p.x = r.x; p.y = r.y; p.path = []; p.task = "idle"; p.target = null; p.huntId = null;
     const { cam } = await import("./render.js"); cam.init = false; cam.follow = true; const ui = await import("./ui.js"); ui.closeModal(); toast(`Chegou em ${cities().find(c => c.id === r.city)?.name || r.city} (−${r.cost} gold)`); renderAll(); }
   catch (e) { toast(e.message, true); b.disabled = false; } }; }
+
+// ---------- barqueiro: travessia da lagoa e viagem entre portos/lagoas ----------
+const boatCost = (a, b) => a.lake && a.lake === b.lake ? 15 : Math.max(50, Math.min(250, Math.round(50 + Math.hypot(a.x - b.x, a.y - b.y) / 40)));
+export function openBoat(npc) {
+  const all = CONT.net?.boats || [], here = all.find(b => b.id === npc.port); if (!here) return;
+  const cross = all.filter(b => b.lake && b.lake === here.lake && b.id !== here.id), others = all.filter(b => b.id !== here.id && !(b.lake && b.lake === here.lake)).map(b => ({ b, d: Math.hypot(b.x - here.x, b.y - here.y) })).sort((a, b) => a.d - b.d);
+  const row = (b, extra) => `<div class="cityrow"><div><b>${b.name}</b><small>${extra}</small></div><button data-boat="${b.id}">${boatCost(here, b)} gold</button></div>`;
+  const el = $("npcBox");
+  el.innerHTML = `<div class="npc-head"><div><h3>Barqueiro · ${here.name}</h3><p class="muted">Rotas Fluviais & Marítimas. Atravessar a lagoa custa 15 gold; viagens entre portos e lagoas, de 50 a 250 gold pela distância.</p></div></div>
+    ${cross.length ? `<h4>Atravessar</h4><div class="citylist">${cross.map(b => row(b, "margem oposta, na hora")).join("")}</div>` : ""}
+    <h4>Viagem rápida</h4><div class="citylist">${others.slice(0, 40).map(({ b, d }) => row(b, `${Math.round(d)} tiles · ${b.lake ? "lagoa" : "mar"}`)).join("")}</div>
+    <div class="talkopts"><button data-close-npc="1">Fechar</button></div>`;
+  $("npcModal").hidden = false;
+  el.querySelectorAll("[data-boat]").forEach(btn => btn.onclick = async () => { btn.disabled = true;
+    try { const r = await rpc("boat_travel", { p_from: here.id, p_to: btn.dataset.boat }); const p = S.p; p.x = r.x; p.y = r.y; p.path = []; p.task = "idle"; p.target = null; p.huntId = null;
+      const { cam } = await import("./render.js"); cam.init = false; cam.follow = true; $("npcModal").hidden = true; toast(`${r.to}: chegou de barco (−${r.cost} gold)`); renderAll(); }
+    catch (e) { toast(e.message, true); btn.disabled = false; } });
+}

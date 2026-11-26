@@ -43,4 +43,7 @@ want "caça no anel 3 rende" '^t16_caca_anel3 => true'
 want "depósito exclusivo do clã dono" '^t17_exclusivo => depósito exclusivo'
 want "6 cidades" '^t18_cidades_view => 6'
 want "dono do anel 3 aparece" '^t18_dono_valen => DVX'
+want "barqueiro: travessia 15 gold" '^t19_travessia => 15$'
+want "barqueiro: viagem longa 50-250" '^t19_viagem_longa => true'
+want "barqueiro só no píer" '^t19_longe_do_pier => fale com o barqueiro'
 [ $FAIL = 0 ] && echo "TUDO OK" || { echo "HOUVE FALHA"; exit 1; }

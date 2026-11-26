@@ -19,6 +19,7 @@ export const CONT = { ready: false, net: null, overview: null, worker: null, sta
 // ---------- carga ----------
 const MEANS = {};
 function meanTex(im) { const c = document.createElement("canvas"); c.width = im.width; c.height = im.height; const g = c.getContext("2d"); g.drawImage(im, 0, 0); const d = g.getImageData(0, 0, c.width, c.height).data; let r = 0, gg = 0, b = 0, n = 0; for (let i = 0; i < d.length; i += 16) { r += d[i]; gg += d[i + 1]; b += d[i + 2]; n++; } return [r / n, gg / n, b / n]; }
+export function heartFallback(g, x, y, w, h) { const im = CONT.heartLod; if (!im) return; const ww = Math.min(w, 300 - x), hh = Math.min(h, 200 - y); g.imageSmoothingEnabled = false; g.drawImage(im, x, y, ww, hh, x * T, y * T, ww * T + .5, hh * T + .5); }
 export function buildHeartLod(W) {
   const { tregion, objects, U, MW: mw, MH: mh, DW: dw, UPT: upt } = W, texOf = ["grass", "grass_dark", "swamp_red", "earth", "stone_dark", "snow", "ruins", "grass"];
   const m = k => MEANS[k] || (MEANS[k] = CONT.tex0[k] ? meanTex(CONT.tex0[k]) : [94, 158, 52]);
@@ -36,7 +37,10 @@ export async function loadContinent(texSrc, version) {
     const net = await (await fetch("assets/world-net.json", { cache: "no-cache" })).json();
     TR.initNet(net); CONT.net = net;
     CONT.overview = await new Promise(res => { const im = new Image(); im.onload = () => res(im); im.onerror = () => res(null); im.src = "assets/world-overview.webp?v=" + (version || ""); });
-    startWorker(net, tex, version);
+    // sprites da natureza pro Worker assar árvores/rochas/enfeites nos pedaços de zoom médio
+    const sprites = {}; try { const { sprite } = await import("./art.js"); await Promise.all(TR.natureSpriteKeys().map(async k => { const [n, t] = k.split("|"); const im = sprite(n, t || null); if (im) sprites[k] = await createImageBitmap(im); })); } catch (e) { }
+    CONT.heartMid = await new Promise(res => { const im = new Image(); im.onload = () => res(im); im.onerror = () => res(null); im.src = "assets/heart-mid.webp?v=" + (version || ""); });
+    startWorker(net, tex, version, sprites);
     CONT.ready = true;
   } catch (e) { console.warn("continente não carregou", e); }
 }
@@ -49,6 +53,7 @@ export function registerContent(net = CONT.net) {
   for (const h of net.hunts) if (!HUNTS.find(x => x.id === h.id)) { const r = h.r;
     HUNTS.push({ id: h.id, name: h.name, why: `${h.region || ""} · ${["Zona Segura", "Fronteira Disputada", "Zona Vermelha"][h.ring - 1]} de ${net.cities.find(c => c.id === h.city).name}`, region: h.city, mon: h.mon, boss: h.boss || null, spawns: h.ring === 3 ? 6 : h.ring === 2 ? 6 : 5, respawn: 14000, r, cx: h.cx, cy: h.cy, rect: { x: h.cx - r, y: h.cy - r, w: 2 * r + 1, h: 2 * r + 1 }, door: [h.cx, h.cy - r], ring: h.ring, city: h.city, zone: ["anel1", "anel2", "anel3"][h.ring - 1] || "anel3", wild: true, subregion: h.region, group: h.group }); }
   for (const c of net.cities) if (!c.heart) for (const n of CITY_NPCS[c.id] || []) { const [dx, dy, voc, title, extra] = n; if (!NPCS.find(q => q.title === title && q.city === c.id)) NPCS.push({ x: c.x + dx, y: c.y + dy, voc, title, king: "grey", city: c.id, ...extra, dir: "down", moving: false, anim: 0, npc: true }); }
+  for (const b of net.boats || []) if (!NPCS.find(q => q.port === b.id)) NPCS.push({ x: b.npc[0], y: b.npc[1], voc: "mercador", title: "Barqueiro", king: "grey", act: "boat", port: b.id, dir: "down", moving: false, anim: 0, npc: true });
   ZONES.anel1 ||= { name: "Zona Segura", desc: "Território nível 1: monstros iniciais da região, PvP 100% desativado.", risk: "Sem risco", color: "#7fd07a", tint: null };
   ZONES.anel2 ||= { name: "Fronteira Disputada — PvP Opcional", desc: "Território nível 2: +30% exp e +25% drop. PvP só pra quem ligar (botão no topo): +20% exp e +15% loot; desligar exige 60 s sem lutar.", risk: "Médio", color: "#f0b040", tint: null };
   ZONES.anel3 ||= { name: "Zona Vermelha — PvP Liberado", desc: "Território nível 3: monstros brutais (elite e chefes), +80% exp, +60% loot, depósitos de diamante, mitril e adamantita. PvP obrigatório, menos contra o próprio clã.", risk: "Muito alto", color: "#e05a4a", tint: "rgba(168,61,61,.08)" };
@@ -57,9 +62,11 @@ export function registerContent(net = CONT.net) {
 
 // ---------- pedaços lógicos (colisão + objetos) ----------
 const LOGIC = new Map(), LOGIC_MAX = 900;
-function logic(cx, cy) {
+export const BUDGET = { until: 0 };   // fim do tempo de trabalho deste quadro (o desenho não monta pedaço depois disso)
+function logic(cx, cy, soft = false) {
   const k = cx + "," + cy; let L = LOGIC.get(k);
   if (L) { LOGIC.delete(k); LOGIC.set(k, L); return L; }
+  if (soft && performance.now() > BUDGET.until) return null;
   const tiles = TR.chunkTiles(cx, cy), objs = TR.chunkObjects(cx, cy, tiles), n = CHUNK + 2, blk = new Uint8Array(CHUNK * CHUNK);
   for (let j = 0; j < CHUNK; j++) for (let i = 0; i < CHUNK; i++) if (TR.isBlocked(tiles[(j + 1) * n + i + 1])) blk[j * CHUNK + i] = 1;
   for (const o of objs) if (o.solid) { const fw = o.fw || 1, fh = o.fh || 1; for (let dy = 0; dy < fh; dy++) for (let dx = 0; dx < fw; dx++) {
@@ -74,7 +81,7 @@ export const procTile = (x, y) => { x = fl(x); y = fl(y); const cx = fl(x / CHUN
 export const isRoadProc = (x, y) => { const b = procTile(x, y); return b === B.ROAD || b === B.BRIDGE || b === B.CITY || b === B.DOCK; };
 export function procObjects(tx0, ty0, tx1, ty1) {
   const out = []; if (!CONT.ready) return out;
-  for (let cy = fl(ty0 / CHUNK); cy <= fl(ty1 / CHUNK); cy++) for (let cx = fl(tx0 / CHUNK); cx <= fl(tx1 / CHUNK); cx++) for (const o of logic(cx, cy).objs) if (o.x >= tx0 && o.x <= tx1 && o.y >= ty0 && o.y <= ty1) out.push(o);
+  for (let cy = fl(ty0 / CHUNK); cy <= fl(ty1 / CHUNK); cy++) for (let cx = fl(tx0 / CHUNK); cx <= fl(tx1 / CHUNK); cx++) { const L = logic(cx, cy, true); if (!L) continue; for (const o of L.objs) if (o.x >= tx0 && o.x <= tx1 && o.y >= ty0 && o.y <= ty1) out.push(o); }
   return out;
 }
 // ---------- região e zona ----------
@@ -151,37 +158,43 @@ export function extendPath(path, n = 2, budgetMs = 12) {
 
 // ---------- chão (Worker + caches) ----------
 // cache L1 por nível: "hi" (32 px/tile, 1024 px por pedaço) e "mid" (8 px/tile)
-const L1 = { hi: new Map(), mid: new Map() }, L1_MAX = { hi: 40, mid: 220 }, pending = new Set(); let inflight = 0;
-function startWorker(net, tex, version) {
+const L1 = { hi: new Map(), mid: new Map() }, L1_MAX = { hi: 64, mid: 256 }, pending = new Set(); let inflight = 0, lastView = "";
+function startWorker(net, tex, version, sprites = {}) {
   try {
     const w = new Worker(new URL("./world.worker.js", import.meta.url), { type: "module" }); CONT.worker = w;
     w.onmessage = e => { const m = e.data; if (m.type === "lod") { lodInflight--; const k = m.cx + "," + m.cy; lodPending.delete(k); LOD.set(k, m.g); while (LOD.size > LOD_MAX) { const [k0, v] = LOD.entries().next().value; LOD.delete(k0); try { v.close(); } catch (er) { } } return; }
+      if (m.type === "dropped") { for (const k of m.keys) { if (pending.delete(k)) inflight--; else if (lodPending.delete(k.slice(4))) lodInflight--; } return; }
       if (m.type !== "chunk") return; inflight--; const k = m.cx + "," + m.cy, M = L1[m.tier]; pending.delete(m.tier + ":" + k);
       M.set(k, m.g); CONT.stats[m.src === "L2" ? "l2" : "gen"]++;
       while (M.size > L1_MAX[m.tier]) { const [k0, v] = M.entries().next().value; M.delete(k0); try { v.close(); } catch (er) { } } };
     w.onerror = e => console.warn("worker do mundo", e.message);
-    w.postMessage({ type: "init", net, tex, version: version || "dev" });
+    w.postMessage({ type: "init", net, tex, version: version || "dev", sprites }, Object.values(sprites));
   } catch (e) { console.warn("sem worker", e); }
 }
-function request(tier, cx, cy) { const k = cx + "," + cy; if (L1[tier].has(k) || pending.has(tier + ":" + k) || !CONT.worker || inflight >= 4) return; pending.add(tier + ":" + k); inflight++; CONT.worker.postMessage({ type: "chunk", tier, cx, cy }); }
+function request(tier, cx, cy) { const k = cx + "," + cy; if (L1[tier].has(k) || pending.has(tier + ":" + k) || !CONT.worker || inflight >= 48) return; pending.add(tier + ":" + k); inflight++; CONT.worker.postMessage({ type: "chunk", tier, cx, cy }); }
 // desenha alinhado aos pixels da tela (sem frestas nem linhas entre pedaços em qualquer zoom)
 export function snapDraw(g, img, x, y, w, h) { const m = g.getTransform(), x0 = Math.round(m.a * x + m.e), y0 = Math.round(m.d * y + m.f), x1 = Math.round(m.a * (x + w) + m.e), y1 = Math.round(m.d * (y + h) + m.f);
   g.save(); g.setTransform(1, 0, 0, 1, 0, 0); g.drawImage(img, x0, y0, x1 - x0, y1 - y0); g.restore(); }
 const PXC = CHUNK * T;      // 1024 px de mundo por pedaço
 export const LOD_ZOOM = .12, HI_ZOOM = .4;
 const LOD = new Map(), LOD_MAX = 2500, lodPending = new Set(); let lodInflight = 0;
-function requestLod(cx, cy) { const k = cx + "," + cy; if (LOD.has(k) || lodPending.has(k) || !CONT.worker || lodInflight >= 12) return; lodPending.add(k); lodInflight++; CONT.worker.postMessage({ type: "lod", cx, cy }); }
+function requestLod(cx, cy) { const k = cx + "," + cy; if (LOD.has(k) || lodPending.has(k) || !CONT.worker || lodInflight >= 160) return; lodPending.add(k); lodInflight++; CONT.worker.postMessage({ type: "lod", cx, cy }); }
 // zoom bem afastado: pedaços de 1 pixel por tile; o que ainda não chegou usa o mapa-múndi
 function drawLod(g, ox, oy, WW, WH) {
   const cx0 = fl(ox / PXC), cy0 = fl(oy / PXC), cx1 = fl((ox + WW) / PXC), cy1 = fl((oy + WH) / PXC), mid = [(cx0 + cx1) / 2, (cy0 + cy1) / 2], miss = [];
   if (CONT.overview) { g.imageSmoothingEnabled = true; g.drawImage(CONT.overview, (ox / T + TR.OX) / TR.OVT, (oy / T + TR.OY) / TR.OVT, WW / T / TR.OVT, WH / T / TR.OVT, ox, oy, WW, WH); }
-  g.imageSmoothingEnabled = false; if (WW / PXC > 60) return;   // continente inteiro na tela: só o mapa-múndi
+  g.imageSmoothingEnabled = false;
   for (let cy = cy0; cy <= cy1; cy++) for (let cx = cx0; cx <= cx1; cx++) { const b = LOD.get(cx + "," + cy); if (b) snapDraw(g, b, cx * PXC, cy * PXC, PXC, PXC); else miss.push([cx, cy]); }
   miss.sort((a, b) => Math.hypot(a[0] - mid[0], a[1] - mid[1]) - Math.hypot(b[0] - mid[0], b[1] - mid[1])); for (const [cx, cy] of miss) requestLod(cx, cy);
 }
 // desenha o chão do continente visível; o coração é desenhado por cima pelo art.js
+function sendView(ox, oy, WW, WH) { const v = [fl(ox / PXC) - 1, fl(oy / PXC) - 1, fl((ox + WW) / PXC) + 1, fl((oy + WH) / PXC) + 1].join(","); if (v === lastView || !CONT.worker) return; lastView = v; const [a, b, c, d] = v.split(",").map(Number); CONT.worker.postMessage({ type: "view", x0: a, y0: b, x1: c, y1: d }); }
+export const MACRO_ZOOM = .03;
 export function drawContinent(g, ox, oy, WW, WH, t, zoom = 1) {
   if (!CONT.ready) return;
+  sendView(ox, oy, WW, WH);
+  // visão macro: o mapa-múndi nítido, sem pedir pedaço nenhum
+  if (zoom < MACRO_ZOOM) { if (CONT.overview) { g.imageSmoothingEnabled = false; g.drawImage(CONT.overview, (ox / T + TR.OX) / TR.OVT, (oy / T + TR.OY) / TR.OVT, WW / T / TR.OVT, WH / T / TR.OVT, ox, oy, WW, WH); } return; }
   if (zoom < LOD_ZOOM) return drawLod(g, ox, oy, WW, WH);
   const tier = zoom >= HI_ZOOM ? "hi" : "mid", M = L1[tier];
   const cx0 = fl(ox / PXC), cy0 = fl(oy / PXC), cx1 = fl((ox + WW) / PXC), cy1 = fl((oy + WH) / PXC);
