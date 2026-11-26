@@ -33,14 +33,28 @@ SHEETS = [
     ("items.png", "5x5", 32, "potion,coins,_,_,_,sword,shield,_,armor,helmet,tusk,cape,ring,dagger,staff,gem,orb,rope,_,_,meat,fish,_,_,chest"),
     ("monsters1.png", "3x3", 40, "rat,boar,bandit,wolf,drowned,spider,witch,miner,golem"),
     ("monsters2.png", "3x2", 48, "wasp,fallen,guardian,boss_foreman,boss_wasp,boss_king"),
+    # 26/11/2026: marcos, vila, interiores, masmorra
+    ("dragon.png", "1x1", 150, "dragon"),
+    ("dragonling.png", "1x1", 48, "dragonling"),
+    ("witch_hut.png", "1x1", 128, "witch_hut"),
+    ("barn.png", "1x1", 128, "barn"),
+    ("tavern.png", "1x1", 132, "tavern"),
+    ("fountain.png", "1x1", 64, "fountain"),
+    ("cave_entrance.png", "1x1", 128, "cave_entrance"),
+    ("wolf_den.png", "1x1", 84, "wolf_den"),
+    ("landmarks.png", "3x3", 52, "web,cocoon,watchtower,haystack,flower_bed,signpost,statue,banner,cart"),
+    ("furniture.png", "4x4", 44, "table,chair,bookshelf,fireplace,chest_big,barrel_rack,rug,anvil,weapon_rack,candle,throne,counter,bar,bar2,crate_stack,plant"),
 ]
 # tamanhos individuais que fogem do target da folha
-OVERRIDE = {"well": 52, "lantern_fence": 64, "stall": 64, "tent": 72, "mine": 88, "house": 96, "house2": 96, "house_thatch": 96, "house_thatch2": 96, "campfire": 34, "crate": 30, "barrel": 30, "skull": 24, "bone": 26, "bone_pile": 30, "wheel": 30, "hay": 34, "pumpkin": 26, "dead_shrub": 34, "moss_rock": 36, "moss_rock2": 36, "lily": 28, "lily2": 28, "reed": 36, "cattail": 36, "boss_foreman": 64, "boss_wasp": 64, "boss_king": 64}
+OVERRIDE = {"watchtower": 84, "web": 60, "statue": 56, "cart": 56, "cocoon": 30, "flower_bed": 34, "haystack": 38, "signpost": 34, "chair": 30, "candle": 34, "plant": 32, "rug": 56, "bar": 64, "barrel_rack": 56, "fireplace": 56, "bookshelf": 52, "weapon_rack": 52, "throne": 52, "table": 48, "counter": 56, "anvil": 36, "chest_big": 34, "bed": 52, "crate_stack": 40, "well": 52, "lantern_fence": 64, "stall": 64, "tent": 72, "mine": 88, "house": 96, "house2": 96, "house_thatch": 96, "house_thatch2": 96, "campfire": 34, "crate": 30, "barrel": 30, "skull": 24, "bone": 26, "bone_pile": 30, "wheel": 30, "hay": 34, "pumpkin": 26, "dead_shrub": 34, "moss_rock": 36, "moss_rock2": 36, "lily": 28, "lily2": 28, "reed": 36, "cattail": 36, "boss_foreman": 64, "boss_wasp": 64, "boss_king": 64}
 
 manifest = []
 for sheet, grid, target, names in SHEETS:
     src = os.path.join(HERE, sheet)
     if not os.path.exists(src): print("falta", sheet); continue
+    CROP = {"furniture.png": (70, 50, 704, 722)}
+    if sheet in CROP:
+        cp = os.path.join(HERE, "_crop_" + sheet); Image.open(src).crop(CROP[sheet]).save(cp); src = cp
     tmp = os.path.join(HERE, "_tmp_" + sheet[:-4]); os.makedirs(tmp, exist_ok=True)
     # recorta no maior target do grupo; depois reduz os que têm override menor
     big = max([target] + [OVERRIDE.get(n, 0) for n in names.split(",")])
@@ -58,7 +72,7 @@ for sheet, grid, target, names in SHEETS:
     print(sheet, "ok")
 
 # texturas: 512 -> 128 (pixel art real), espelhadas pra 256 tileável; o jogo lê blocos de 32
-for n in ["grass", "grass_dark", "sand", "cobble", "swamp", "rock"]:   # terra e água ficam procedurais (a IA desenhou grade de azulejos)
+for n in ["grass", "grass_dark", "sand", "cobble", "swamp", "rock", "wood", "stone_floor", "cave", "snow"]:   # terra e água ficam procedurais (a IA desenhou grade de azulejos)
     src = os.path.join(HERE, f"tex_{n}.png")
     if not os.path.exists(src): print("falta tex", n); continue
     im = Image.open(src).convert("RGB").crop((64, 64, 448, 448)).resize((128, 128), Image.LANCZOS)

@@ -3,3 +3,9 @@
 .env*
 .env*.local
 docs/
+supabase/.temp
+
+# rascunhos do pipeline de arte
+art/gen/_tmp_*/
+art/gen/_crop_*.png
+art/gen/*.log

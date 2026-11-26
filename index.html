@@ -2,33 +2,33 @@
 <html lang="pt-BR">
 <head>
 <meta charset="utf-8">
+<meta name="theme-color" content="#171522">
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
 <title>Hunt Taken</title>
-<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Nunito:wght@600;700;800;900&family=JetBrains+Mono:wght@500;700&display=swap">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Nunito:wght@600;700;800;900&family=Cinzel:wght@600;700&family=JetBrains+Mono:wght@500;700&display=swap">
 <link rel="stylesheet" href="css/style.css">
 </head>
 <body>
-<nav class="top">
-  <div class="logo">HUNT <span>TAKEN</span></div>
-  <div class="tabs">
-    <button data-tab="map">Mapa</button><button data-tab="market">Market</button><button data-tab="equip">Equipamento</button><button data-tab="ranks">Ranks</button><button data-tab="arena">Arena</button><button data-tab="war">Guerra</button><button data-tab="session">Sessão</button><button data-tab="settings">Ajustes</button>
-  </div>
-</nav>
+<header class="topbar">
+  <div class="brand"><div class="logo">HUNT <span>TAKEN</span></div><button id="worldBtn" class="worldbtn" title="Mundos"><b>Mundo 1</b> <span>Eldoria</span> ▾</button></div>
+  <nav class="tabs" id="navTabs"><button data-tab="char" title="Personagem"><svg viewBox="0 0 16 16" class="ico"><path d="M8 8a3 3 0 1 0 0-6 3 3 0 0 0 0 6zM2.5 14.5c.6-3 2.8-4.5 5.5-4.5s4.9 1.5 5.5 4.5"/></svg><span class="lbl">Personagem</span><b class="badge">!</b></button><button data-tab="map" title="Mapa"><svg viewBox="0 0 16 16" class="ico"><path d="M1.5 3.5l4-1.5 5 2 4-1.5v10l-4 1.5-5-2-4 1.5zM5.5 2v10M10.5 4v10"/></svg><span class="lbl">Mapa</span><b class="badge">!</b></button><button data-tab="market" title="Market"><svg viewBox="0 0 16 16" class="ico"><path d="M2 6h12l-1 8H3zM5 6V4.5a3 3 0 0 1 6 0V6"/></svg><span class="lbl">Market</span><b class="badge">!</b></button><button data-tab="equip" title="Mochila"><svg viewBox="0 0 16 16" class="ico"><path d="M3 5h10v9H3zM6 5V3h4v2M3 9h10"/></svg><span class="lbl">Mochila</span><b class="badge">!</b></button><button data-tab="profs" title="Ofícios"><svg viewBox="0 0 16 16" class="ico"><path d="M3 13l6-6M9.5 2.5l4 4-2 2-4-4zM2 14l2-2"/></svg><span class="lbl">Ofícios</span><b class="badge">!</b></button><button data-tab="workshop" title="Oficina"><svg viewBox="0 0 16 16" class="ico"><path d="M2 13h12M4 13V9h8v4M6 9V6h4v3M8 6V2.5"/></svg><span class="lbl">Oficina</span><b class="badge">!</b></button><button data-tab="quests" title="Missões"><svg viewBox="0 0 16 16" class="ico"><path d="M4 2h7l2 2v10H4zM6 6h5M6 9h5M6 12h3"/></svg><span class="lbl">Missões</span><b class="badge">!</b></button><button data-tab="bestiary" title="Bestiário"><svg viewBox="0 0 16 16" class="ico"><path d="M3 2.5h8.5a1.5 1.5 0 0 1 1.5 1.5v10H4.5A1.5 1.5 0 0 1 3 12.5zM3 12.5A1.5 1.5 0 0 1 4.5 11H13"/></svg><span class="lbl">Bestiário</span><b class="badge">!</b></button><button data-tab="clan" title="Clã"><svg viewBox="0 0 16 16" class="ico"><path d="M8 1.5l5.5 2v4.5c0 3.2-2.4 5.4-5.5 6.5C4.9 13.4 2.5 11.2 2.5 8V3.5z"/></svg><span class="lbl">Clã</span><b class="badge">!</b></button><button data-tab="trades" title="Trocas"><svg viewBox="0 0 16 16" class="ico"><path d="M2 5h10l-2.5-2.5M14 11H4l2.5 2.5"/></svg><span class="lbl">Trocas</span><b class="badge">!</b></button><button data-tab="wallet" title="Carteira"><svg viewBox="0 0 16 16" class="ico"><path d="M2 4.5h11a1 1 0 0 1 1 1v7a1 1 0 0 1-1 1H2zM2 4.5l8-2.5v2.5M11 9h3"/></svg><span class="lbl">Carteira</span><b class="badge">!</b></button><button data-tab="ranks" title="Ranks"><svg viewBox="0 0 16 16" class="ico"><path d="M3 14V9h3v5M6.5 14V5h3v9M10 14V7h3v7"/></svg><span class="lbl">Ranks</span><b class="badge">!</b></button><button data-tab="session" title="Sessão"><svg viewBox="0 0 16 16" class="ico"><path d="M8 14.5A6.5 6.5 0 1 0 8 1.5a6.5 6.5 0 0 0 0 13zM8 4.5V8l2.5 1.5"/></svg><span class="lbl">Sessão</span><b class="badge">!</b></button><button data-tab="settings" title="Ajustes"><svg viewBox="0 0 16 16" class="ico"><path d="M8 10.5a2.5 2.5 0 1 0 0-5 2.5 2.5 0 0 0 0 5zM8 1v2M8 13v2M1 8h2M13 8h2M3 3l1.5 1.5M11.5 11.5L13 13M3 13l1.5-1.5M11.5 4.5L13 3"/></svg><span class="lbl">Ajustes</span><b class="badge">!</b></button></nav>
+</header>
 <main class="cols">
   <aside class="col left">
     <section class="panel profile">
-      <div class="pid"><div class="avatar" id="avatar"></div><div><b id="pname">—</b><div class="sub"><span id="pking">—</span> · <span id="pvoc">—</span></div></div><div class="lvl">Nv <b id="plvl">1</b></div></div>
-      <div class="bar exp"><i id="expbar"></i></div><div class="sub center" id="pexp">0 / 0 xp</div>
-      <div class="chips"><span class="chip gold">🪙 <b id="pgold">0</b></span><span class="chip"><b id="ppots">0</b> poções</span><span class="chip">exp <b id="multExp">×1</b></span><span class="chip">loot <b id="multLoot">×1</b></span></div>
+      <div class="pid"><canvas id="avatar" class="avatar" width="56" height="56"></canvas><div class="pidt"><b id="pname">—</b><div class="sub nowrap"><span id="pking">—</span> · <span id="pclass">—</span></div><span id="pvoc" hidden></span></div><div class="lvl">Nv <b id="plvl">1</b></div></div>
+      <div class="vbar exp"><i id="expbar"></i><span id="pexp">0 / 0 xp</span></div>
+      <div class="pills"><span class="pill gold" title="Gold">🪙 <b id="pgold">0</b></span><span class="pill gem" title="Gemas">💎 <b id="pgems">0</b></span><span class="pill usdt" title="Equivalente em USDT">≈ <b id="pusdt">0.00</b> USDT</span><span class="pill" title="Poções">🧪 <b id="ppots">0</b></span></div>
+      <div class="pills mult"><span class="pill">exp <b id="multExp">×1</b></span><span class="pill">loot <b id="multLoot">×1</b></span></div>
       <div id="boosts" class="boosts"></div>
     </section>
-    <section class="panel">
+    <section class="panel field">
       <h2>Em campo</h2>
-      <div class="row"><span>Vida</span><b id="hp">0</b></div><div class="bar hp"><i id="hpbar"></i></div>
-      <div class="row"><span>Mana</span><b id="mana">0</b></div><div class="bar mana"><i id="manabar"></i></div>
-      <div class="skills"><div class="row"><span>Espada</span><b id="skSword">10</b></div><div class="row"><span>Distância</span><b id="skDist">10</b></div><div class="row"><span>Magic</span><b id="skMagic">0</b></div><div class="row"><span>Escudo</span><b id="skShield">10</b></div><div class="row"><span>Ataque</span><b id="atk">0</b></div><div class="row"><span>Defesa</span><b id="def">0</b></div><div class="row"><span>Poder</span><b id="pow">0</b></div><div class="row"><span>Mochila</span><b id="bag">0</b></div><div class="row"><span>Bênção</span><b id="bless">não</b></div></div>
-      <div class="sub">Status: <b id="task">—</b></div>
-      <div class="actions"><button id="btnBless">Bênção (200)</button><button id="btnDeposit">Depositar</button><button id="btnIdle">Parar</button></div>
+      <div class="vbar hp"><i id="hpbar"></i><span><small>Vida</small> <b id="hp">0</b></span></div>
+      <div class="vbar mana"><i id="manabar"></i><span><small>Mana</small> <b id="mana">0</b></span></div>
+      <div class="statgrid"><div class="st"><span>Espada</span><b id="skSword">10</b></div><div class="st"><span>Distância</span><b id="skDist">10</b></div><div class="st"><span>Magic</span><b id="skMagic">0</b></div><div class="st"><span>Escudo</span><b id="skShield">10</b></div><div class="st"><span>Dano/s</span><b id="atk">0</b></div><div class="st"><span>Defesa</span><b id="def">0</b></div><div class="st"><span>Crítico</span><b id="pow">0</b></div><div class="st"><span>Esquiva</span><b id="dodge">0</b></div></div>
+      <div class="stlines"><div class="st"><span>Carga</span><b id="carry">0</b></div><div class="st"><span>Mochila</span><b id="bag">0</b></div><div class="st"><span>Bênção</span><b id="bless">não</b></div><div class="st"><span>Status</span><b id="task">—</b></div></div>
+      <div class="btngrid"><button id="btnBless">Bênção (200g)</button><button id="btnDeposit">Voltar e depositar</button><button id="btnIdle">Escolher hunt</button></div>
     </section>
     <section class="panel"><h2>Equipamento</h2><div id="equip" class="equip"></div></section>
   </aside>
@@ -38,32 +38,48 @@
       <canvas id="view" width="832" height="520"></canvas>
       <div class="event" id="eventBar" hidden></div>
       <div class="toast" id="toast"></div>
-      <div class="maptools"><button id="btnMapTab" class="primary">Escolher hunt</button><button id="btnCenter">Centrar</button><button id="btnSpeed">x1</button></div><div class="huntpop" id="huntPop" hidden></div>
+      <div class="maptools"><button id="btnMapTab" class="primary">Escolher hunt</button><button id="btnCenter">Centralizar</button><button id="btnZoomOut" aria-label="Afastar">−</button><button id="btnZoomIn" aria-label="Aproximar">+</button></div><div class="huntpop" id="huntPop" hidden></div><div class="questbar" id="questbar" hidden></div>
     </div>
   </section>
 
   <aside class="col right">
-    <section class="panel">
-      <h2>Automações</h2>
-      <label class="auto"><span>Usar poção abaixo de <b id="autoPotV">50%</b></span><input type="range" id="autoPot" min="10" max="90" value="50"></label>
-      <label class="auto chk"><input type="checkbox" id="autoReturn" checked> Voltar pra hunt depois de morrer</label>
-      <label class="auto chk"><input type="checkbox" id="autoDeposit" checked> Depositar quando encher ou faltar poção</label>
-      <label class="auto chk"><input type="checkbox" id="autoSell" checked> Vender materiais no depósito</label>
-      <label class="auto"><span>Repor poções até</span><input type="number" id="autoBuy" min="0" max="30" value="10"></label>
+    <section class="panel behavior">
+      <h2>Comportamento de caça</h2>
+      <div class="presets"><button data-preset="seguro">Seguro</button><button data-preset="equilibrado">Equilibrado</button><button data-preset="ganancioso">Ganancioso</button><button data-preset="gold">Gold</button></div>
+      <label class="ctl"><span>Postura</span><select id="bPostura"><option value="agressiva">Agressiva</option><option value="equilibrada">Equilibrada</option><option value="defensiva">Defensiva</option></select></label>
+      <label class="ctl"><span>Alvo</span><select id="bAlvo"><option value="proximo">Mais próximo</option><option value="fraco">Mais fraco</option><option value="forte">Mais forte</option><option value="raro">Raro / drop</option></select></label>
+      <label class="ctl"><span>Poção &lt; <b id="bPocaoV">50%</b></span><input type="range" id="bPocao" min="10" max="90" step="10" value="50"></label>
+      <label class="ctl"><span>Recuar &lt;</span><select id="bRecuo"><option value="0">nunca</option><option value="10">10%</option><option value="20">20%</option><option value="30">30%</option></select></label>
+      <label class="ctl"><span>Retorno</span><select id="bRepo"><option value="mochila">mochila cheia</option><option value="pocao">sem poção</option><option value="nunca">nunca</option></select></label>
+      <label class="ctl"><span>Objetivo</span><select id="bObj"><option value="exp">Exp</option><option value="gold">Gold</option><option value="materiais">Materiais</option></select></label>
+      <label class="ctl"><span>Repor poções</span><input type="number" id="bPots" min="0" max="30" value="10"></label>
     </section>
-    <section class="panel">
+    <section class="panel huntp">
       <h2>Hunt atual</h2>
-      <div class="row"><b id="huntName">—</b></div>
+      <div class="huntname" id="huntName">—</div>
       <div id="huntStats"></div>
       <div id="occupants"></div>
     </section>
-    <section class="panel feedp"><h2>Feed</h2><ul id="feed"></ul></section>
+    <section class="panel social">
+      <div class="chat-tabs"><button data-chat="global" class="on">Global <i></i></button><button data-chat="comercio">Comércio <i></i></button><button data-chat="cla">Clã <i></i></button><button data-chat="mundo">Mundo <i></i></button></div>
+      <ul id="chatLog"></ul><form id="chatForm"><input id="chatInput" type="text" maxlength="240" placeholder="Escreva e Enter" autocomplete="off"><button type="submit">Enviar</button></form>
+      <h2 class="feedh">Feed</h2><ul id="feed" class="feed"></ul>
+    </section>
   </aside>
 </main>
 
 <div class="modal" id="modal" hidden><div class="box wide"><div class="mh"><h3 id="modalTitle">—</h3><button id="modalClose" class="x">✕</button></div><div id="modalBody"></div></div></div>
+<div class="modal" id="npcModal" hidden><div class="box"><div id="npcBox"></div></div></div>
 <div class="modal" id="report" hidden><div class="box"><h3>Relatório de volta</h3><p id="repSub"></p><div class="rep" id="repGrid"></div><div id="repNotes" class="muted"></div><button class="primary" id="repClose" style="width:100%">Continuar</button></div></div>
-<div class="modal" id="create" hidden><div class="box"><h3>Criar personagem</h3><label class="auto"><span>Nome</span><input type="text" id="cName" maxlength="14" placeholder="Seu nome"></label><h4>Vocação</h4><div id="cVoc" class="picks"></div><h4>Reino</h4><div id="cKing" class="picks"></div><button class="primary" id="cGo" style="width:100%">Entrar no mundo</button></div></div>
+<div class="modal" id="auth" hidden><div class="box"><div class="logo big">HUNT <span>TAKEN</span></div><p class="sub">Idle MMORPG. Seu personagem caça sozinho, no servidor, mesmo com o jogo fechado.</p>
+  <div class="tabs2"><button data-atab="login" class="on">Entrar</button><button data-atab="signup">Criar conta</button><button data-atab="reset">Esqueci a senha</button></div>
+  <form id="fLogin" class="aform"><label class="auto"><span>E-mail</span><input type="email" id="lEmail" required autocomplete="email"></label><label class="auto"><span>Senha</span><input type="password" id="lPass" required autocomplete="current-password"></label><button class="primary" type="submit">Entrar</button></form>
+  <form id="fSignup" class="aform" hidden><label class="auto"><span>E-mail</span><input type="email" id="sEmail" required autocomplete="email"></label><label class="auto"><span>Senha (8+)</span><input type="password" id="sPass" required minlength="8" autocomplete="new-password"></label><label class="auto chk"><input type="checkbox" id="sTerms"> Aceito os termos de uso e a política de privacidade (v1)</label><button class="primary" type="submit">Criar conta</button></form>
+  <form id="fReset" class="aform" hidden><label class="auto"><span>E-mail</span><input type="email" id="rEmail" required autocomplete="email"></label><button class="primary" type="submit">Enviar link de recuperação</button></form>
+  <div id="authMsg" class="amsg"></div></div></div>
+<div class="modal" id="newpass" hidden><div class="box"><h3>Nova senha</h3><form id="fNewPass" class="aform"><label class="auto"><span>Nova senha (8+)</span><input type="password" id="nPass" required minlength="8" autocomplete="new-password"></label><button class="primary" type="submit">Salvar</button></form><div id="npMsg" class="amsg bad"></div></div></div>
+<div class="modal" id="create" hidden><div class="box"><h3>Criar personagem</h3><label class="auto"><span>Nome</span><input type="text" id="cName" maxlength="14" placeholder="Seu nome"></label><h4>Vocação</h4><div id="cVoc" class="picks"></div><h4>Casa</h4><div id="cKing" class="picks"></div><button class="primary" id="cGo" style="width:100%">Entrar no mundo</button><div id="cMsg" class="amsg bad"></div></div></div>
+<div class="modal" id="loading" hidden><div class="box" style="text-align:center"><div class="logo big">HUNT <span>TAKEN</span></div><p class="sub" id="loadingMsg">carregando o mundo…</p></div></div>
 <script type="module" src="js/main.js"></script>
 </body>
 </html>

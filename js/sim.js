@@ -1,6 +1,8 @@
 // Simulação: jogador, rivais, criaturas, combate, economia, arena, guerra, off-line.
-import { T, TICK, KING, VOC, MONS, ITEMS, RARITY, HUNTS, REGIONS, CAPITAL, DEPOT, HOME, BOT_SPOTS, BOT_NAMES, ECON, WAR, TIERS, expFor, skillNext } from "./data.js";
-import { walk, path, huntAt, inRect, freeTile, regionAt } from "./world.js";
+import { T, TICK, KING, VOC, MONS, ITEMS, RARITY, HUNTS, REGIONS, CAPITAL, DEPOT, HOME, ECON, WAR, TIERS, expFor, skillNext } from "./data.js";
+import { walk, findPath, huntAt, inRect, freeTile, regionAt, inVila, NPCS } from "./world.js";
+import { projectile, slash, burst, dying, ring, later } from "./fx.js";
+import { drawMonGhost } from "./art.js";
 
 export const rr = (a, b) => a + Math.floor(Math.random() * (b - a + 1));
 export const clamp = (v, a, b) => Math.max(a, Math.min(b, v));
@@ -18,6 +20,7 @@ export const S = {
   pvp: { rating: 1000, wins: 0, losses: 0, tactic: { potionAt: 50, retreatAt: 20, opener: "forte", stance: "equilibrado" }, log: [], weekReset: nextSunday() },
   market: { listings: [], mine: [] },
   listeners: [],
+  server: true, gold: 0, inventory: [], session: null, reports: [], huntState: {}, presence: {}, occupants: [], influence: [], events: [], rivals: [], medianRival: 1,
 };
 export const emit = (ev, data) => S.listeners.forEach(f => f(ev, data));
 export const P = () => S.p;
@@ -29,32 +32,30 @@ function nextSunday() { const d = new Date(); d.setHours(0, 0, 0, 0); do d.setDa
 export function newPlayer(name, voc, king) {
   return { name, king, voc, x: HOME.x, y: HOME.y, lvl: 1, exp: 0, hp: 150, mana: 50, skills: { sword: 10, distance: 10, magic: 0, shield: 10 }, skillXp: { sword: 0, distance: 0, magic: 0, shield: 0 },
     gold: 50, pots: 5, bag: [], equip: { weapon: null, shield: null, armor: null, helmet: null, ring: null }, bless: false, premium: false,
-    huntId: null, task: "idle", target: null, path: [], dead: 0, attackCd: 0, immune: 0, lastHunt: null, moving: 0, dir: "down", face: 1, roam: null, created: now() };
-}
-export function makeBots() {
-  S.bots = BOT_NAMES.map(([name, king, voc, lvl], i) => ({ name, king, voc, lvl, exp: expFor(lvl), skills: { sword: 10 + lvl, distance: 10 + lvl, magic: Math.floor(lvl * .8), shield: 8 + lvl }, pots: 10, x: BOT_SPOTS[i][0], y: BOT_SPOTS[i][1], hunt: null, goal: null, path: [], busy: 0, next: now() + rr(10000, 40000), immune: 0, moving: 0, dir: "down", face: 1, hair: ["#3a2415", "#e8a84a", "#2b2b2b", "#b8552e", "#5a3a2a", "#d8c070", "#1a1a1a", "#8a2a2a", "#3a2415", "#e8a84a", "#2b2b2b"][i], rating: 900 + lvl * 8, grow: now() }));
+    huntId: null, task: "idle", target: null, path: [], dead: 0, attackCd: 0, immune: 0, lastHunt: null, moving: false, dir: "down", face: 1, speed: 3.6, anim: 0, vx: 0, vy: 0, seed: Math.floor(Math.random() * 24), created: now() };
 }
 export function spawnAll() {
   S.mons = [];
-  for (const h of HUNTS) for (let i = 0; i < h.spawns; i++) { const m = MONS[h.mon], pos = freeTile(h.rect); S.mons.push({ hunt: h.id, type: h.mon, x: pos.x, y: pos.y, hp: m.hp, alive: true, respawnAt: 0, cd: 0, face: 1 }); }
-  for (const h of HUNTS) if (h.boss) { const m = MONS[h.boss], pos = freeTile(h.rect); S.mons.push({ hunt: h.id, type: h.boss, x: pos.x, y: pos.y, hp: m.hp, alive: false, respawnAt: now() + rr(2, 8) * 60000, cd: 0, face: 1, boss: true }); }
+  const mk = (h, type, boss) => { const pos = freeTile(h); return { hunt: h.id, type, x: pos.x, y: pos.y, hp: MONS[type].hp, alive: !boss, respawnAt: boss ? now() + rr(2, 8) * 60000 : 0, cd: 0, face: 1, boss: !!boss, path: [], speed: MONS[type].speed === 2 ? 2.4 : 1.4, anim: 0, moving: false, think: Math.random() * 3 }; };
+  for (const h of HUNTS) { for (let i = 0; i < h.spawns; i++) S.mons.push(mk(h, h.mon)); if (h.boss) S.mons.push(mk(h, h.boss, true)); }
 }
 
 // ---------- derivados ----------
-export const hpMax = p => 100 + VOC[p.voc].hpPerLvl * p.lvl + equipSum(p, "hp");
-export const manaMax = p => 30 + VOC[p.voc].manaPerLvl * p.lvl;
+export const hpMax = p => p.hpMax || (100 + VOC[p.voc].hpPerLvl * p.lvl + equipSum(p, "hp"));
+export const manaMax = p => p.manaMax || (30 + VOC[p.voc].manaPerLvl * p.lvl);
 export const mainSkill = p => p.skills[VOC[p.voc].skill] ?? 10;
 export function equipSum(p, k) { let s = 0; for (const it of Object.values(p.equip || {})) if (it) { const d = ITEMS[it.id]; const base = d[k] || 0; s += base * (RARITY[it.rar]?.mult || 1) + (it.roll?.[k] || 0); } return s; }
-export const atkOf = p => VOC[p.voc].atkBase + mainSkill(p) * 1.1 + equipSum(p, "atk") + (p.king === "ash" ? 0 : 0);
-export const defOf = p => (equipSum(p, "def") + (p.skills.shield || 10) * .3) * VOC[p.voc].defMul;
-export const power = e => (e.lvl * 2 + (e.skills ? (mainSkill(e) * 3 + e.skills.shield * 2) : 50) + (e.equip ? equipSum(e, "atk") * 2 + equipSum(e, "def") * 2 : e.lvl * 1.5) + (e.pots || 0) * .5) * (1 + tierBonus(e));
+export const atkOf = p => p.atk || (VOC[p.voc].atkBase + mainSkill(p) * 1.1 + equipSum(p, "atk"));
+export const defOf = p => p.def || ((equipSum(p, "def") + (p.skills.shield || 10) * .3) * VOC[p.voc].defMul);
+export const power = e => e.power || ((e.lvl * 2 + (e.skills ? (mainSkill(e) * 3 + e.skills.shield * 2) : 50) + (e.equip ? equipSum(e, "atk") * 2 + equipSum(e, "def") * 2 : e.lvl * 1.5) + (e.pots || 0) * .5) * (1 + tierBonus(e)));
 export function tierBonus(e) { if (e !== S.p) return 0; const t = tierOf(S.pvp.rating); return t * .02; }
 export function tierOf(r) { let i = 0; TIERS.forEach((t, k) => { if (r >= t[1]) i = k; }); return i; }
 export const medianBotLvl = () => { const l = S.bots.map(b => b.lvl).sort((a, b) => a - b); return l[Math.floor(l.length / 2)] || 1; };
 export function expMult(p) {
+  if (S.server) { let m = 1; for (const e of S.events) if (!e.hunt_id) m *= 1 + Number(e.payload?.exp || 0); if (p.lvl < S.medianRival) m *= 2; return m; }
   let m = 1; if (p.premium) m *= 1.5; if (S.event && now() < S.event.until) m *= 1 + S.event.exp; if (dominant() === p.king) m *= 1.15; if (p.lvl < medianBotLvl()) m *= 5; return m;
 }
-export function lootMult(p) { let m = 1; if (p.king === "grey") m *= 1.05; if (S.event && now() < S.event.until) m *= 1 + S.event.loot; m *= 1 + equipSum(p, "loot"); const h = p.lastHunt && HUNTS.find(x => x.id === p.lastHunt); if (h?.rare) m *= 1; return m; }
+export function lootMult(p) { let m = 1; if (p.king === "grey") m *= 1.05; if (S.server) { for (const e of S.events) if (!e.hunt_id) m *= 1 + Number(e.payload?.loot || 0); return m; } if (S.event && now() < S.event.until) m *= 1 + S.event.loot; m *= 1 + equipSum(p, "loot"); const h = p.lastHunt && HUNTS.find(x => x.id === p.lastHunt); if (h?.rare) m *= 1; return m; }
 export function dominant() { const c = { grey: 0, ash: 0, thorn: 0 }; for (const k of Object.values(S.war.owner)) c[k]++; const best = Object.entries(c).sort((a, b) => b[1] - a[1])[0]; return best[1] >= 5 ? best[0] : null; }
 
 export function log(msg, kind) { S.feed.unshift({ t: hhmm(), msg, kind }); if (S.feed.length > 60) S.feed.pop(); emit("feed"); }
@@ -81,133 +82,175 @@ export function playerDies(p, cause) {
   if (!S.auto.autoReturn || p.pots === 0) { p.task = "idle"; log("Rota pausada: sem poção ou retorno automático desligado."); }
 }
 
-// ---------- desafio de hunt ----------
-export function resolveChallenge(att, def) { const pa = power(att) * (1 + (Math.random() * .2 - .1)), pd = power(def) * (1 + (Math.random() * .2 - .1)); return pa > pd; }
-function toCapital(b) { const i = S.bots.indexOf(b); b.x = BOT_SPOTS[i][0]; b.y = BOT_SPOTS[i][1]; b.path = []; b.hunt = null; b.busy = 0; b.goal = null; }
-export function botTakesHunt(b) {
-  const p = S.p; if (p.immune > 0 || p.lvl < 10 || b.lvl > p.lvl + 20) return;
-  if (resolveChallenge(b, p)) { const stolen = Math.floor(p.gold * .1); p.gold -= stolen; const lost = Math.floor(p.exp * .01); p.exp -= lost; sendHome(p, 8); p.immune = 15000 / TICK; S.stats.lost++; log(`HUNT TAKEN: ${b.name} (${KING[b.king].name}) te expulsou. -${fmt(lost)} exp, -${stolen} gold.`, "bad"); emit("toast", { msg: `${b.name} tomou sua hunt`, bad: true }); }
-  else { b.immune = 30000 / TICK; b.next = now() + 20000; toCapital(b); log(`${b.name} tentou tomar sua hunt e perdeu.`, "good"); emit("toast", { msg: `${b.name} perdeu o desafio` }); }
-}
-export function playerChallenges(b) {
-  const p = S.p; if (b.immune > 0) return emit("toast", { msg: `${b.name} está protegido`, bad: true }); if (b.lvl < p.lvl - 20) return emit("toast", { msg: "Alvo muito abaixo do seu level", bad: true });
-  if (resolveChallenge(p, b)) { const stolen = Math.floor(30 + b.lvl * 4); p.gold += stolen; S.stats.taken++; b.immune = 15000 / TICK; b.next = now() + rr(30000, 60000); toCapital(b); log(`HUNT TAKEN: você expulsou ${b.name} (${KING[b.king].name}). +${stolen} gold do chão.`, "good"); emit("toast", { msg: `Você tomou a hunt de ${b.name}` }); }
-  else { const lost = Math.floor(p.exp * .01); p.exp -= lost; sendHome(p, 8); p.immune = 15000 / TICK; S.stats.lost++; log(`Você desafiou ${b.name} e perdeu. -${fmt(lost)} exp.`, "bad"); emit("toast", { msg: "Perdeu o desafio", bad: true }); }
-  emit("ui");
-}
-export function occupantsOf(id) { const o = []; if (S.p.lastHunt === id) o.push(S.p); for (const b of S.bots) if (b.hunt === id && b.busy > 0) o.push(b); return o; }
+export function occupantsOf(id) { if (S.server) return occupantsServer(id); const o = []; if (S.p.lastHunt === id) o.push(S.p); for (const b of S.bots) if (b.hunt === id && b.busy > 0) o.push(b); return o; }
 export function huntInfo(h, p = S.p) {
-  const m = MONS[h.mon], perHour = h.spawns * 3600000 / (h.respawn + 6000), occ = occupantsOf(h.id).length || 1;
-  const goldH = perHour * ((m.gold[0] + m.gold[1]) / 2 + (m.drop ? m.drop.chance * (ITEMS[m.drop.item].sell || 0) : 0)) * lootMult(p);
-  const expH = perHour * m.exp * expMult(p);
+  // espelha a conta do servidor: spawn × população, limitado pelo tempo de matar, dividido entre ocupantes
+  const m = MONS[h.mon], pop = S.server ? huntStateOf(h.id).population : 100, pf = .2 + .8 * pop / 100;
+  const occ = Math.max(1, occupantsOf(h.id).length + (S.server && S.p.huntId !== h.id ? 1 : 0));
+  const dps = Math.max(1, atkOf(p) * .9 - m.def), ttk = m.hp / dps * .8, capKills = 3600 / (ttk + 2);
+  const spawnH = h.spawns * 3600000 / (h.respawn + 6000) * pf, perHour = Math.min(spawnH / occ, capKills) * (p.lvl < m.lvl * .6 ? .5 : 1);
+  const evLocal = S.server ? S.events.filter(e => e.hunt_id === h.id) : [];
+  const goldH = perHour * ((m.gold[0] + m.gold[1]) / 2) * lootMult(p) * (1 + evLocal.reduce((a, e) => a + Number(e.payload?.loot || 0), 0));
+  const expH = perHour * m.exp * expMult(p) * (1 + evLocal.reduce((a, e) => a + Number(e.payload?.exp || 0), 0));
   const danger = clamp((m.lvl - p.lvl) * .06 + .03, .01, .95);
-  const dps = Math.max(1, atkOf(p) * .9 - m.def), ttk = m.hp / dps * (TICK * 2 / 1000), dmgIn = Math.max(0, m.atk - defOf(p)) * ttk / 1.2;
-  const potsH = clamp(dmgIn * perHour / 60 / ECON.POT_HEAL, 0, 400);
-  return { m, perHour, goldH, expH, danger, occ, share: 1 / occ, potsH, netH: goldH / occ - potsH * ECON.POT_COST, lvlOk: p.lvl >= m.lvl * .6 };
+  const dmgIn = Math.max(0, m.atk - defOf(p)) * ttk / 1.2 * perHour, potsH = clamp(dmgIn / (60 + p.lvl), 0, 400);
+  return { m, perHour, goldH, expH, danger, occ, share: 1, potsH, netH: goldH - potsH * ECON.POT_COST, lvlOk: p.lvl >= m.lvl * .6 };
 }
 
-// ---------- ticks ----------
-export function stepAlong(e) { if (!e.path.length) { e.moving = 0; return false; } const n = e.path.shift(); if (n.x !== e.x) { e.face = n.x > e.x ? 1 : -1; e.dir = e.face > 0 ? "right" : "left"; } else if (n.y !== e.y) e.dir = n.y > e.y ? "down" : "up"; e.x = n.x; e.y = n.y; e.moving = 2; return true; }
-const dist = (a, b) => Math.abs(a.x - b.x) + Math.abs(a.y - b.y);
+// ---------- movimento contínuo ----------
+// Posição em tiles com casas decimais (centro do tile = inteiro). A rota é uma lista de pontos já alisada.
+export const dist = (a, b) => Math.hypot(a.x - b.x, a.y - b.y);
+export const EXTRA_HUNTS = [];
+const findHunt = id => HUNTS.find(x => x.id === id) || EXTRA_HUNTS.find(x => x.id === id);
+export function moveEntity(e, dt) {
+  if (!e.path || !e.path.length) { e.moving = false; e.vx = 0; e.vy = 0; return; }
+  let budget = e.speed * dt, moved = 0;
+  while (budget > 0 && e.path.length) {
+    const t = e.path[0], dx = t.x - e.x, dy = t.y - e.y, d = Math.hypot(dx, dy);
+    if (d <= budget) { e.x = t.x; e.y = t.y; e.path.shift(); budget -= d; moved += d; }
+    else { e.x += dx / d * budget; e.y += dy / d * budget; moved += budget; budget = 0; }
+  }
+  const t = e.path[0] || { x: e.x, y: e.y }, dx = t.x - e.x, dy = t.y - e.y, d = Math.hypot(dx, dy) || 1;
+  e.vx = dx / d * e.speed; e.vy = dy / d * e.speed; e.moving = moved > 0; e.anim = (e.anim || 0) + moved;
+  // direção com histerese: só troca de eixo quando o outro domina com folga
+  const ax = Math.abs(dx), ay = Math.abs(dy);
+  const horiz = e.dir === "left" || e.dir === "right";
+  if (horiz ? ay > ax * 1.35 : ax > ay * 1.35 || !e.dir) e.dir = ax >= ay ? (dx > 0 ? "right" : "left") : (dy > 0 ? "down" : "up");
+  else e.dir = horiz ? (dx > 0 ? "right" : dx < 0 ? "left" : e.dir) : (dy > 0 ? "down" : dy < 0 ? "up" : e.dir);
+  if (dx) e.face = dx > 0 ? 1 : -1;
+}
+// WASD / setas: anda direto com colisão por eixo (desliza nas paredes e nunca entra na água)
+export const keys = new Set();
+function manualMove(p, dt) {
+  let dx = (keys.has("d") ? 1 : 0) - (keys.has("a") ? 1 : 0), dy = (keys.has("s") ? 1 : 0) - (keys.has("w") ? 1 : 0);
+  if (!dx && !dy) { if (p.manual) { p.manual = false; p.moving = false; p.vx = p.vy = 0; const h = huntAt(p.x, p.y); if (p.inDungeon) p.task = "hunt"; else if (h && h.id === p.manualFrom) { p.task = "hunt"; p.huntId = h.id; } else if (h) { p.huntId = h.id; p.task = "hunt"; emit("arrive", h.id); } else { if (p.manualFrom) emit("leave"); p.huntId = null; p.task = "idle"; emit("ui"); } } return false; }
+  if (!p.manual) { p.manual = true; p.manualFrom = p.task === "hunt" || p.task === "goto" ? p.huntId : null; }
+  const l = Math.hypot(dx, dy); dx /= l; dy /= l; const st = p.speed * dt;
+  p.path = []; p.target = null; p.task = "walk";
+  const ok = (x, y) => walk(Math.round(x), Math.round(y)) && walk(Math.round(x + .3), Math.round(y)) && walk(Math.round(x - .3), Math.round(y)) && walk(Math.round(x), Math.round(y + .3));
+  if (ok(p.x + dx * st, p.y)) p.x += dx * st; if (ok(p.x, p.y + dy * st)) p.y += dy * st;
+  p.vx = dx * p.speed; p.vy = dy * p.speed; p.moving = true; p.anim = (p.anim || 0) + st;
+  p.dir = Math.abs(dx) > Math.abs(dy) ? (dx > 0 ? "right" : "left") : (dy > 0 ? "down" : "up"); if (dx) p.face = dx > 0 ? 1 : -1;
+  return true;
+}
+export function updateMovement(dt) {
+  const p = S.p; if (p && p.dead <= 0 && !manualMove(p, dt)) moveEntity(p, dt);
+  const dec = e => { if (e.atkT > 0) e.atkT -= dt; if (e.hitT > 0) e.hitT -= dt; };
+  if (p) dec(p);
+  for (const m of S.mons) if (m.alive) { moveEntity(m, dt); dec(m); }
+  for (const n of NPCS) { moveEntity(n, dt); }
+}
+// NPCs: olham em volta; guardas fazem ronda curta
+export function npcTick() {
+  for (const n of NPCS) {
+    if (!n.home) { n.home = { x: n.x, y: n.y }; n.speed = 1.3; n.path = []; n.anim = 0; n.seed = (n.x * 7 + n.y) % 24; }
+    if (n.path.length) continue;
+    if (n.voc === "guarda" && Math.random() < .08) { const tx = n.home.x + (Math.abs(n.x - n.home.x) < .5 ? (Math.random() < .5 ? -3 : 3) : 0), ty = n.home.y; const pp = findPath(n.x, n.y, tx, ty, 400); if (pp) n.path = pp; }
+    else if (Math.random() < .06) n.dir = ["down", "left", "right", "down", "up"][Math.floor(Math.random() * 5)];
+  }
+}
+// se o personagem ficou em cima de um tile bloqueado (colisão do andar manual), encosta no livre mais perto
+function unstick(e) { if (walk(e.x, e.y)) return; for (let r = 1; r < 4; r++) for (let dy = -r; dy <= r; dy++) for (let dx = -r; dx <= r; dx++) if (walk(e.x + dx, e.y + dy)) { e.x = Math.floor(e.x + dx) + .5; e.y = Math.floor(e.y + dy) + .5; return; } }
+function goTo(e, x, y) { const pp = findPath(e.x, e.y, x, y); e.path = pp || []; return !!pp; }
 function nearestMon(p, range, huntId) { let best = null, bd = 1e9; for (const m of S.mons) if (m.alive && (!huntId || m.hunt === huntId)) { const d = dist(m, p); if (d <= range && d < bd) { bd = d; best = m; } } return best; }
 
 export function playerTick() {
   const p = S.p, voc = VOC[p.voc];
-  if (p.moving > 0) p.moving--; if (p.immune > 0) p.immune--;
+  if (p.immune > 0) p.immune--;
   if (p.dead > 0) { p.dead--; return; }
-  p.hp = Math.min(hpMax(p), p.hp + .6 * (p.king === "thorn" ? 1.05 : 1) + (p.lvl * .02)); p.mana = Math.min(manaMax(p), p.mana + .8);
   p.lastHunt = huntAt(p.x, p.y)?.id || null;
-  if (p.hp < hpMax(p) * S.auto.potionAt / 100 && p.pots > 0) { p.pots--; S.stats.pots++; p.hp = Math.min(hpMax(p), p.hp + ECON.POT_HEAL + p.lvl); clog("poção usada", "info"); }
-  if (p.task === "idle") return;
-  const needDeposit = S.auto.autoDeposit && (p.bag.length >= ECON.BAG_CAP || (p.pots === 0 && p.gold >= ECON.POT_COST));
-  if (p.task === "hunt" && needDeposit) { p.task = "deposit"; p.path = []; p.target = null; log("Mochila cheia ou sem poção: voltando pro depósito."); }
-  if (p.task === "deposit") {
-    if (p.x === DEPOT.x && p.y === DEPOT.y + 1) { depositAtNpc(p); p.task = p.huntId ? "goto" : "idle"; p.path = []; }
-    else if (!p.path.length) p.path = path(p.x, p.y, DEPOT.x, DEPOT.y + 1) || [];
-    stepAlong(p); return;
-  }
-  const hh = p.huntId && HUNTS.find(x => x.id === p.huntId);
+  if (p.task === "idle" || p.task === "gather") return;
+  // andar manual: chegou numa área de caça, começa a caçar ali; fora dela, para
+  if (p.task === "walk") { if (!p.path.length && p.pendingDoor) { const d = p.pendingDoor; p.pendingDoor = null; p.task = "idle"; emit("door", d); return; } if (!p.path.length && !p.manual) { const h = huntAt(p.x, p.y); if (h) { p.huntId = h.id; p.task = "hunt"; emit("arrive", h.id); log(`Chegou em ${h.name}.`); } else { p.task = "idle"; emit("ui"); } } return; }
+  const hh = p.huntId && findHunt(p.huntId);
   if (!hh) { p.task = "idle"; return; }
   if (p.task === "goto") {
-    if (inRect(hh.rect, p.x, p.y)) { p.task = "hunt"; p.path = []; log(`Chegou em ${hh.name}.`); emit("ui"); }
-    else { if (!p.path.length) { const d = freeTile(hh.rect); p.path = path(p.x, p.y, d.x, d.y) || []; if (!p.path.length) { p.task = "idle"; log("Não achei caminho até a hunt."); return; } } stepAlong(p); return; }
+    if (huntAt(p.x, p.y)?.id === hh.id && dist(p, { x: hh.cx, y: hh.cy }) < hh.r * .8) { p.task = "hunt"; p.path = []; log(`Chegou em ${hh.name}.`); emit("ui"); return; }
+    if (!p.path.length) {
+      // não desiste: tenta outros pontos da área, desencosta de parede e tenta de novo a cada 2 s
+      if (p.gotoWait && performance.now() < p.gotoWait) return;
+      const d = freeTile({ ...hh, r: hh.r * .5 });
+      if (goTo(p, d.x, d.y) || goTo(p, hh.cx, hh.cy) || goTo(p, hh.door[0], hh.door[1] + 1)) { p.gotoWarned = false; return; }
+      unstick(p); p.gotoWait = performance.now() + 2000;
+      if (!p.gotoWarned) { p.gotoWarned = true; log(`Procurando caminho até ${hh.name}…`); }
+    }
+    return;
   }
-  // em hunt: ataca o que estiver perto, senão vagueia dentro da área
-  if (!p.target || !p.target.alive) p.target = nearestMon(p, 7, hh.id);
-  if (p.target) {
-    const m = p.target, d = dist(m, p);
-    if (d <= voc.range) {
-      p.face = m.x > p.x ? 1 : m.x < p.x ? -1 : p.face; p.dir = Math.abs(m.x - p.x) >= Math.abs(m.y - p.y) ? (m.x > p.x ? "right" : "left") : (m.y > p.y ? "down" : "up");
+  // caçando: escolhe o alvo mais perto, chega no alcance e ataca; sem alvo, patrulha a área
+  if (!p.target || !p.target.alive || dist(p.target, { x: hh.cx, y: hh.cy }) > hh.r + 3) p.target = nearestMon(p, hh.r + 6, hh.id);
+  const m = p.target;
+  if (m) {
+    const d = dist(m, p), reach = voc.range + .35;
+    if (d <= reach) {
+      p.path = []; const dx = m.x - p.x, dy = m.y - p.y; p.dir = Math.abs(dx) >= Math.abs(dy) ? (dx > 0 ? "right" : "left") : (dy > 0 ? "down" : "up"); p.face = dx >= 0 ? 1 : -1;
       if (p.attackCd-- <= 0) {
         p.attackCd = voc.skill === "magic" ? 2 : 1; const mt = MONS[m.type];
-        if (voc.skill === "magic") { if (p.mana < 5) { p.attackCd = 0; return; } p.mana -= 5; }
-        const kb = p.king === "ash" ? 1.05 : 1;
-        const dmg = Math.max(1, Math.floor(atkOf(p) * kb * (.6 + Math.random() * .6) - mt.def));
-        m.hp -= dmg; skillUp(p, voc.skill); fx.push({ x: m.x, y: m.y, v: "-" + dmg, t: 6, c: "#fff" });
-        if (m.hp <= 0) killMon(p, m);
+        const dmg = Math.max(1, Math.floor(atkOf(p) * (p.king === "ash" ? 1.05 : 1) * (.6 + Math.random() * .6) - mt.def));
+        p.atkT = p.atkDur = .36; p.atkSeq = (p.atkSeq || 0) + 1;
+        const hit = () => { if (!m.alive) return; m.hp -= dmg; m.hitT = .15; fx.push({ x: m.x, y: m.y, v: "-" + dmg, t: 8, c: "#fff" }); burst(m, p.voc === "knight" ? "#ffe6a8" : p.voc === "paladin" ? "#e8dfc9" : p.voc === "druid" ? "#9be36b" : "#c9a8ff", 6); if (m.hp <= 0) killMon(p, m); };
+        if (p.voc === "knight") later(.16, () => { slash(m, p.dir, KING[p.king].light); hit(); });
+        else later(.2, () => projectile(p.voc === "paladin" ? "arrow" : p.voc === "druid" ? "nature" : "arcane", p, m, hit));
       }
       return;
     }
-    if (!p.path.length || p.path.at(-1).x !== m.x || p.path.at(-1).y !== m.y) { const pp = path(p.x, p.y, m.x, m.y); p.path = pp ? pp.slice(0, -1) : []; }
-    if (p.path.length) { stepAlong(p); return; }
+    const end = p.path[p.path.length - 1];
+    if (!end || Math.hypot(end.x - m.x, end.y - m.y) > 1.5) { goTo(p, Math.round(m.x), Math.round(m.y)); if (p.path.length && voc.range > 1) { /* para no alcance */ } }
+    return;
   }
-  if (!p.path.length) { if (Math.random() < .35) { const d = freeTile(hh.rect); p.path = (path(p.x, p.y, d.x, d.y) || []).slice(0, 6); } return; }
-  stepAlong(p);
+  if (!p.path.length && Math.random() < .4) { const d = freeTile({ ...hh, r: hh.r * .8 }); goTo(p, d.x, d.y); }
 }
-function lineClear(a, b) { return true; }
 function killMon(p, m) {
-  const mt = MONS[m.type], h = HUNTS.find(x => x.id === m.hunt);
-  m.alive = false; m.respawnAt = now() + (m.boss ? rr(8, 15) * 60000 : h.respawn); S.stats.kills++;
-  const e = gainExp(p, mt.exp); const g = Math.floor(rr(mt.gold[0], mt.gold[1]) * lootMult(p)); p.gold += g; S.stats.gold += g;
-  fx.push({ x: m.x, y: m.y, v: "+" + g + "g", t: 8, c: "#ffcf5a" });
-  clog(`${mt.name} derrotado! +${fmt(e)} exp, +${g} gold`, "kill");
-  if (mt.drop && Math.random() < mt.drop.chance * (h.rare || 1) * (1 + equipSum(p, "loot"))) { if (p.bag.length < ECON.BAG_CAP) { const it = rollItem(mt.drop.item); p.bag.push(it); S.stats.drops++; log(`Dropou ${itemName(it)}!`, "good"); emit("toast", { msg: `Drop: ${itemName(it)}` }); } else log(`${ITEMS[mt.drop.item].name} caiu no chão: mochila cheia.`, "bad"); }
-  if (m.boss) { log(`BOSS: ${mt.name} abatido por você!`, "good"); S.war.supplies[p.king] += 50; }
-  p.target = null;
+  const mt = MONS[m.type], h = findHunt(m.hunt) || { respawn: 1e12 };
+  dying(m, drawMonGhost); burst(m, "#ffcf5a", 10, 2.8); ring(m, "#ffcf5a");
+  m.alive = false; m.path = []; m.respawnAt = now() + (m.boss ? rr(8, 15) * 60000 : h.respawn); S.stats.kills++;
+  clog(`${mt.name} derrotado`, "kill"); p.target = null;
 }
-export function depositAtNpc(p) {
-  let sold = 0, n = 0; if (S.auto.sellLoot) { p.bag = p.bag.filter(it => { if (ITEMS[it.id].mat || (!canEquip(p, it) && !ITEMS[it.id].slot)) { sold += itemValue(it); n++; return false; } return true; }); }
-  p.gold += sold; const want = Math.min(S.auto.potBuy - p.pots, Math.floor(p.gold / ECON.POT_COST)); if (want > 0) { p.pots += want; p.gold -= want * ECON.POT_COST; S.stats.spent += want * ECON.POT_COST; }
-  log(`Depósito: vendeu ${n} itens por ${fmt(sold)} gold, comprou ${Math.max(0, want)} poções.`);
-}
+export function depositAtNpc() {}
 
 export function monTick() {
   const t = now(), p = S.p;
   for (const m of S.mons) {
-    const mt = MONS[m.type];
-    if (!m.alive) { if (t >= m.respawnAt) { const h = HUNTS.find(x => x.id === m.hunt); const pos = freeTile(h.rect); m.x = pos.x; m.y = pos.y; m.hp = mt.hp; m.alive = true; if (m.boss) log(`${mt.name} apareceu em ${h.name}!`, "bad"); } continue; }
-    const d = dist(m, p);
-    if (p.dead === 0 && p.task !== "idle" && d <= 1) {
-      if (m.cd-- <= 0) {
-        m.cd = 2;
-        if (Math.random() < clamp(p.skills.shield * .012, .05, .6)) { skillUp(p, "shield"); fx.push({ x: p.x, y: p.y, v: "bloqueou", t: 5, c: "#9fe8c9" }); continue; }
-        const dmg = Math.max(0, Math.floor(mt.atk * (.5 + Math.random()) - defOf(p)));
-        p.hp -= dmg; fx.push({ x: p.x, y: p.y, v: "-" + dmg, t: 6, c: "#ff8a8a" }); if (p.hp <= 0) { playerDies(p, mt.name); return; }
-      }
+    const mt = MONS[m.type], h = m.home || HUNTS.find(x => x.id === m.hunt);
+    if (!m.alive) { if (t >= m.respawnAt) { const pos = freeTile(h); m.x = pos.x; m.y = pos.y; m.hp = mt.hp; m.alive = true; m.path = []; if (m.boss) log(`${mt.name} apareceu em ${h.name}!`, "bad"); } continue; }
+    const d = dist(m, p), engaged = p.dead === 0 && p.task === "hunt" && p.huntId === m.hunt && (p.target === m || d < 2.2);
+    if (engaged) {
+      if (d > 1.25) { if (!m.path.length || (m.think -= 1) <= 0) { m.think = 2; const pp = findPath(m.x, m.y, Math.round(p.x), Math.round(p.y), 3000); m.path = pp ? pp.slice(0, -1) : []; } }
+      else { m.path = []; m.face = p.x > m.x ? 1 : -1; if (m.cd-- <= 0) { m.cd = 2; const dd = Math.hypot(p.x - m.x, p.y - m.y) || 1; m.atkDx = (p.x - m.x) / dd; m.atkDy = (p.y - m.y) / dd; m.atkT = .3; const dmg = Math.max(0, Math.floor(mt.atk * (.5 + Math.random()) - defOf(p))); later(.14, () => { if (!m.alive) return; if (dmg) { p.hitT = .14; burst(p, "#ff8a8a", 4, 1.6); } else ring(p, "#9fe8c9"); fx.push({ x: p.x, y: p.y, v: dmg ? "-" + dmg : "bloqueou", t: 8, c: dmg ? "#ff8a8a" : "#9fe8c9" }); }); } }
       continue;
     }
-    if (p.dead === 0 && p.task !== "idle" && d <= 6 && huntAt(p.x, p.y)?.id === m.hunt) { if (S.t % (mt.speed === 2 ? 1 : 2) === 0) { const pp = path(m.x, m.y, p.x, p.y); if (pp && pp.length > 1) { m.face = pp[0].x > m.x ? 1 : pp[0].x < m.x ? -1 : m.face; m.x = pp[0].x; m.y = pp[0].y; } } continue; }
-    if (Math.random() < .15) { const h = HUNTS.find(x => x.id === m.hunt); const nx = m.x + rr(-1, 1), ny = m.y + rr(-1, 1); if (walk(nx, ny) && inRect(h.rect, nx, ny)) { m.face = nx > m.x ? 1 : nx < m.x ? -1 : m.face; m.x = nx; m.y = ny; } }
+    // vaga devagar no próprio habitat, sem sair do raio
+    if (!m.path.length && (m.think -= 1) <= 0) { m.think = 3 + Math.random() * 8; const a = Math.random() * 6.283, r = 1 + Math.random() * 3; let x = Math.round(m.x + Math.cos(a) * r), y = Math.round(m.y + Math.sin(a) * r); if (Math.hypot(x - h.cx, y - h.cy) > h.r) { x = Math.round(h.cx + (m.x - h.cx) * .6); y = Math.round(h.cy + (m.y - h.cy) * .6); } if (walk(x, y)) { const pp = findPath(m.x, m.y, x, y, 600); m.path = pp || []; } }
   }
 }
 
-export function botTick() {
-  const t = now(), p = S.p;
-  S.bots.forEach((b, i) => {
-    if (b.moving > 0) b.moving--; if (b.immune > 0) b.immune--;
-    if (t - b.grow > 120000) { b.grow = t; if (Math.random() < .5) { b.lvl++; b.skills.sword++; b.skills.shield++; b.rating += rr(-10, 15); } }
-    if (b.busy > 0) {
-      b.busy--;
-      if (Math.random() < .12) { const h = HUNTS.find(x => x.id === b.hunt); const alive = S.mons.filter(m => m.alive && m.hunt === b.hunt && !m.boss); if (alive.length) { const m = alive[rr(0, alive.length - 1)]; if (m !== p.target && dist(m, b) <= 3) { m.alive = false; m.respawnAt = t + h.respawn; } else { const pp = path(b.x, b.y, m.x, m.y); if (pp && pp.length > 1) { b.path = pp.slice(0, 2); stepAlong(b); } } } }
-      else if (Math.random() < .3) { const h = HUNTS.find(x => x.id === b.hunt); const nx = b.x + rr(-1, 1), ny = b.y + rr(-1, 1); if (walk(nx, ny) && inRect(h.rect, nx, ny)) { b.face = nx > b.x ? 1 : nx < b.x ? -1 : b.face; b.dir = nx > b.x ? "right" : nx < b.x ? "left" : ny > b.y ? "down" : "up"; b.x = nx; b.y = ny; b.moving = 2; } }
-      if (p.lastHunt === b.hunt && p.dead === 0 && b.immune === 0 && Math.random() < .004 && b.king !== p.king) botTakesHunt(b);
-      if (b.busy === 0) { b.hunt = null; b.next = t + rr(10000, 40000); b.path = path(b.x, b.y, BOT_SPOTS[i][0], BOT_SPOTS[i][1]) || []; }
-      return;
-    }
-    if (b.path.length) { stepAlong(b); if (!b.path.length && b.goal) { b.hunt = b.goal.id; b.goal = null; b.busy = rr(90, 300) * (1000 / TICK) | 0; if (p.lastHunt === b.hunt) { log(`${b.name} (${KING[b.king].name}) entrou na sua hunt.`); emit("toast", { msg: `${b.name} entrou na sua hunt`, bad: true }); } } return; }
-    if (t >= b.next) { const fit = HUNTS.filter(h => Math.abs(MONS[h.mon].lvl - b.lvl) <= 15); const list = fit.length ? fit : HUNTS.slice(0, 3); const h = list[rr(0, list.length - 1)]; const pos = freeTile(h.rect); b.goal = h; b.path = path(b.x, b.y, pos.x, pos.y) || []; if (!b.path.length) b.next = t + 5000; }
-  });
+export function botTick() {}
+
+// aplica o estado do servidor no estado local (números são do servidor; posição e animação são locais)
+export function applyServer(st) {
+  if (!st || !st.character) return;
+  const c = st.character, p = S.p;
+  Object.assign(p, { name: c.name, king: c.kingdom, voc: c.vocation, lvl: c.level, exp: Number(c.exp), hp: c.hp, mana: c.mana, skills: c.skills, skillXp: c.skill_xp || {}, pots: c.pots, bless: c.bless, premium: c.premium, serverId: c.id, hpMax: c.hp_max, manaMax: c.mana_max, atk: c.atk, def: c.def, power: c.power, attrs: c.attrs, classId: c.class_id, specId: c.spec_id, expNext: Number(c.exp_next), expCur: Number(c.exp_cur), behavior: c.behavior, killsTotal: Number(c.kills), deathsTotal: c.deaths });
+  S.cstats = st.stats || {}; S.pointsFree = st.points_free || 0; S.cls = st.class; S.spec = st.spec; S.skillsOn = st.skills_on || []; S.profs = st.professions || []; S.stacks = st.stacks || []; S.carry = st.carry || { used: 0, cap: 100 }; S.gatherJob = st.gather_job; S.craftJobs = st.craft_jobs || [];
+  S.gold = Number(st.gold || 0); S.gems = Number(st.gems || 0); S.clan = st.clan || null; S.quests = st.quests || []; S.trades = st.trades || []; S.clanInvites = st.clan_invites || []; S.clanSent = st.clan_sent || []; S.world = st.world || S.world || null; S.usdtEquiv = st.usdt_equiv || 0; S.clanExtra = st.clan_extra || null; S.fortOwner = st.fort_owner || null; S.marketNews = st.market_news || 0; S.admin = !!st.admin; S.dungeon = st.dungeon || null; S.inventory = st.inventory || []; S.session = st.session; S.reports = st.reports || []; S.huntState = st.hunt_state || {}; S.presence = st.presence || {}; S.occupants = st.occupants || []; S.influence = st.influence || []; S.events = st.events || []; S.medianRival = st.median_level || 1;
+  // sincroniza modo/hunt local com o servidor
+  const wasHunt = p.huntId; if (!p.inDungeon) p.huntId = c.hunt_id || null;
+  // primeira carga: aparece onde o servidor diz que está (na área de caça ou na vila). Depois disso a posição é do movimento local.
+  if (!p.placed) { p.placed = true; const h0 = c.task === "hunt" && HUNTS.find(x => x.id === c.hunt_id); if (h0) { const f = freeTile({ ...h0, r: h0.r * .5 }); p.x = f.x; p.y = f.y; p.task = "hunt"; } else { p.x = HOME.x; p.y = HOME.y; p.task = "idle"; } }
+  else if (p.inDungeon) { }
+  else if (c.task === "hunt") { if (p.task === "idle" || wasHunt !== p.huntId) { p.task = huntAt(p.x, p.y)?.id === p.huntId ? "hunt" : "goto"; p.path = []; p.target = null; } }
+  else if (p.task !== "walk" && p.task !== "gather") { p.task = "idle"; if (wasHunt) { p.path = []; p.target = null; } }
+  // nenhum personagem é desenhado sem posição real vinda do servidor (etapa 3). Lista de online vem do servidor.
+  S.bots = []; S.ranking = st.ranking || []; S.online = st.online || 0;
+  emit("ui");
 }
+export const huntStateOf = id => S.huntState[id] || { population: 100, state: "abundante" };
+export function territoryOf(id) {
+  const list = S.influence.filter(i => i.hunt_id === id).sort((a, b) => b.influence - a.influence);
+  if (!list.length || list[0].influence < 20) return { state: "livre", top: null, list };
+  if (list.length > 1 && list[1].influence >= 20 && list[0].influence - list[1].influence < 25) return { state: "disputada", top: list[0], list };
+  return { state: list[0].influence >= 50 ? "dominada" : "disputada", top: list[0], list };
+}
+export function occupantsServer(id) { return S.occupants.filter(o => o.hunt_id === id); }
 
 // ---------- mercado ----------
 export function refreshMarket() {
@@ -261,7 +304,7 @@ export function simulateWar() {
 }
 export function warTick() { if (now() >= S.war.next) simulateWar(); }
 
-export function goHunt(id) { const p = S.p, hh = HUNTS.find(x => x.id === id); if (!hh) return; p.huntId = id; p.task = "goto"; p.path = []; p.target = null; log(`Indo caçar em ${hh.name}.`); emit("toast", { msg: `Indo pra ${hh.name}` }); emit("ui"); }
+export function goHunt(id) { const p = S.p, hh = HUNTS.find(x => x.id === id); if (!hh) return; p.huntId = id; p.task = huntAt(p.x, p.y)?.id === id ? "hunt" : "goto"; p.path = []; p.target = null; log(`Indo caçar em ${hh.name}.`); emit("toast", { msg: `Indo pra ${hh.name}` }); emit("ui"); }
 export function goHome() { const p = S.p; p.huntId = null; p.task = "deposit"; p.path = []; p.target = null; p.idleAfter = true; emit("toast", { msg: "Voltando pra capital" }); emit("ui"); }
 
 // ---------- off-line ----------
@@ -284,3 +327,11 @@ export function offlineReport(ms) {
 export function save() { const p = S.p; if (!p) return; const d = { p: { ...p, path: [], target: null }, bots: S.bots.map(b => ({ ...b, path: [], goal: null })), stats: S.stats, auto: S.auto, event: S.event, war: S.war, pvp: S.pvp, market: S.market, feed: S.feed.slice(0, 30), lastSeen: now() }; try { localStorage.setItem(SAVE_KEY, JSON.stringify(d)); } catch (e) { } }
 export function load() { try { const d = JSON.parse(localStorage.getItem(SAVE_KEY) || "null"); if (!d) return null; S.p = { ...d.p, path: [], target: null, dead: 0, immune: 0, moving: 0 }; if (!walk(S.p.x, S.p.y)) { S.p.x = HOME.x; S.p.y = HOME.y; } if (d.bots) S.bots = d.bots.map(b => ({ ...b, path: [], goal: null, busy: 0, hunt: null })); Object.assign(S.stats, d.stats, { start: now() }); Object.assign(S.auto, d.auto || {}); if (d.event) S.event = d.event; if (d.war) S.war = d.war; if (d.pvp) S.pvp = d.pvp; if (d.market) S.market = d.market; S.feed = d.feed || []; return now() - (d.lastSeen || now()); } catch (e) { return null; } }
 export function resetSave() { try { localStorage.removeItem(SAVE_KEY); } catch (e) { } }
+
+// clique num tile: anda até lá por uma rota alisada. Se estava caçando, avisa o servidor que parou.
+export function walkTo(x, y) {
+  const p = S.p; const pp = findPath(p.x, p.y, x, y); if (!pp) return false;
+  const wasHunting = p.task === "hunt" || p.task === "goto";
+  p.task = "walk"; p.path = pp; p.target = null; if (wasHunting) { p.huntId = null; emit("leave"); }
+  return true;
+}
