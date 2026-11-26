@@ -32,7 +32,7 @@ async function pollChat() {
 function renderChat() {
   document.querySelectorAll("[data-chat]").forEach(b => { const ch = b.dataset.chat; b.classList.toggle("on", ch === chat.channel); b.querySelector("i").textContent = chat.unread[ch] ? chat.unread[ch] : ""; });
   const box = $("chatLog"); if (!box) return; const atBottom = box.scrollTop + box.clientHeight >= box.scrollHeight - 30;
-  box.innerHTML = chat.msgs[chat.channel].map(m => `<li><time>${new Date(m.created_at).toLocaleTimeString("pt-BR", { hour: "2-digit", minute: "2-digit" })}</time> <b style="color:${KING[m.kingdom]?.color || "#fff"}">${m.clan_tag ? `[${esc(m.clan_tag)}] ` : ""}${esc(m.name)}</b>: ${esc(m.body)}</li>`).join("") || `<li class="muted">${chat.channel === "cla" && !S.clan ? "Entre num clã pra usar este canal." : "Nenhuma mensagem ainda. Diga oi."}</li>`;
+  box.innerHTML = chat.msgs[chat.channel].map(m => `<li><time>${new Date(m.created_at).toLocaleTimeString("pt-BR", { hour: "2-digit", minute: "2-digit" })}</time> ${m.vip ? `<span class="chat-vip" title="VIP">👑 VIP</span>` : ""}<b style="color:${m.vip ? "#ffd25a" : KING[m.kingdom]?.color || "#fff"}">${m.clan_tag ? `[${esc(m.clan_tag)}] ` : ""}${esc(m.name)}</b>: ${esc(m.body)}</li>`).join("") || `<li class="muted">${chat.channel === "cla" && !S.clan ? "Entre num clã pra usar este canal." : "Nenhuma mensagem ainda. Diga oi."}</li>`;
   if (atBottom) box.scrollTop = box.scrollHeight;
 }
 

@@ -52,6 +52,12 @@ function renderProfile() {
   boosts.push([KING[p.king].name, KING[p.king].bonus, "king"]);
   if (p.lvl < S.medianRival) boosts.push(["Boost de alcance", `×2 exp até o level ${Math.round(S.medianRival)}, mediana dos jogadores da semana`, "mint"]);
   if (p.premium) boosts.push(["Premium", "24 h off-line, taxa 3%", "gold"]);
+  // VIP e boosts do passe (vêm do servidor; a 1ª leitura é feita aqui)
+  if (S.server && !S.vipAsked) { S.vipAsked = true; import("./vip.js").then(m => m.refreshVip()).then(() => renderProfile()); }
+  const vl = S.vip?.vip_until && new Date(S.vip.vip_until) - Date.now();
+  if (vl > 0) boosts.push(["👑 VIP", `+50% exp · faltam ${vl > 864e5 ? Math.floor(vl / 864e5) + " dias" : Math.ceil(vl / 36e5) + " h"}`, "vip"]);
+  for (const [k, u] of Object.entries(S.vip?.boosts || {})) { const ms = new Date(u) - Date.now(); if (ms > 0) boosts.push([k === "exp" ? "⚡ Boost de exp" : "🍀 Boost de loot", `+50% · ${Math.ceil(ms / 6e4)} min`, "mint"]); }
+  if (S.vip?.can_claim) boosts.push(["🎟️ Passe", `Dia ${S.vip.day} pronto pra resgatar`, "gold"]);
   $("boosts").innerHTML = boosts.map(([a, b, c]) => `<div class="boost ${c}"><b>${a}</b><span>${b}</span></div>`).join("");
   $("multExp").textContent = `×${expMult(p).toFixed(2)}`; $("multLoot").textContent = `×${lootMult(p).toFixed(2)}`;
 }
@@ -100,7 +106,8 @@ export function openModal(tab) { openTab = tab; $("modal").querySelector(".box")
 export function closeModal() { openTab = null; $("modal").hidden = true; }
 async function renderTab(tab) {
   setTimeout(paintDoll, 0);
-  const p = P(); const box = $("modalBody"); $("modalTitle").textContent = { wallet: "Carteira (USDT)", bestiary: "Bestiário", char: "Personagem", profs: "Ofícios", workshop: "Oficina", quests: "Missões", clan: "Clã", trades: "Trocas entre jogadores", map: "Mapa", market: "Market", equip: "Equipamento e mochila", ranks: "Ranks", arena: "Arena ranqueada (protótipo local)", war: "Guerra das Casas (protótipo local)", session: "Sessão", settings: "Conta e ajustes" }[tab];
+  const p = P(); const box = $("modalBody"); $("modalTitle").textContent = { vip: "VIP & Passe de Batalha", market: "Mercado", ranks: "Ranking", session: "Relatório da caçada", wallet: "Carteira (USDT)", bestiary: "Bestiário", char: "Personagem", profs: "Profissões", workshop: "Oficina", quests: "Missões", clan: "Clã", trades: "Trocas entre jogadores", map: "Mapa", market: "Market", equip: "Equipamento e mochila", ranks: "Ranks", arena: "Arena ranqueada (protótipo local)", war: "Guerra das Casas (protótipo local)", session: "Sessão", settings: "Conta e ajustes" }[tab];
+  if (tab === "vip") { import("./vip.js").then(m => m.renderVip(box)); return; }
   if (tab === "map") { $("modalTitle").textContent = "Mapa / Escolher Hunt"; $("modal").querySelector(".box").classList.add("mapbox"); import("./mapview.js").then(m => m.renderMapView(box));
   } else if (tab === "shop") { /* a loja desenha a si mesma (shops.js) */
   } else if (tab === "market") { renderMarket(box);
