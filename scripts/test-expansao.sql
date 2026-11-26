@@ -35,8 +35,9 @@ do $$ begin perform craft_start('forjar_anel','segura',1,'[{"t":"barra_ferro"},{
 -- ===== falha na oficina devolve metade (forçada com 100% de falha)
 reset role; update game_config set value = jsonb_set(value, '{padrao,fail}', '1') where key = 'techniques'; select stack_add(:'tid','couro_cru',50,4); update craft_jobs set started_at = started_at - interval '1 minute' where character_id = :'tid'; set local role authenticated;
 select (craft_start('curtir_couro','padrao',1,'[]') ->> 'job') as jf \gset
-reset role; update craft_jobs set ready_at = now() - interval '1 s' where id = :'jf'; update game_config set value = jsonb_set(value, '{padrao,fail}', '0.08') where key = 'techniques'; set local role authenticated;
+reset role; update craft_jobs set ready_at = now() - interval '1 s' where id = :'jf'; set local role authenticated;
 insert into r select 'falha_oficina', (craft_finish(:'jf') ->> 'fail');
+reset role; update game_config set value = jsonb_set(value, '{padrao,fail}', '0.08') where key = 'techniques'; set local role authenticated;
 -- ===== encantamento: prefixo 2x (nível II) + sufixo de fogo =====
 reset role;
 select (select id from items i join inventory v on v.item_id = i.id where v.character_id = (select id from characters where name='Testador') and i.template_id = 'elmo_forjado' order by i.created_at desc limit 1) as elmo \gset
