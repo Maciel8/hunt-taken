@@ -43,7 +43,7 @@
   </section>
 
   <aside class="col right">
-    <section class="panel behavior">
+    <section class="panel behavior collapsible" id="pBehavior">
       <h2>Comportamento de caça</h2>
       <div class="presets"><button data-preset="seguro">Seguro</button><button data-preset="equilibrado">Equilibrado</button><button data-preset="ganancioso">Ganancioso</button><button data-preset="gold">Gold</button></div>
       <label class="ctl"><span>Postura</span><select id="bPostura"><option value="agressiva">Agressiva</option><option value="equilibrada">Equilibrada</option><option value="defensiva">Defensiva</option></select></label>
@@ -54,7 +54,7 @@
       <label class="ctl"><span>Objetivo</span><select id="bObj"><option value="exp">Exp</option><option value="gold">Gold</option><option value="materiais">Materiais</option></select></label>
       <label class="ctl"><span>Repor poções</span><input type="number" id="bPots" min="0" max="30" value="10"></label>
     </section>
-    <section class="panel huntp">
+    <section class="panel huntp collapsible" id="pHunt">
       <h2>Hunt atual</h2>
       <div class="huntname" id="huntName">—</div>
       <div id="huntStats"></div>

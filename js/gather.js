@@ -61,7 +61,13 @@ export function startGather(o) {
   if (n.remaining <= 0 && n.refill_at && new Date(n.refill_at) > new Date()) return toast(`${n.name} esgotado. Volta em ${Math.ceil((new Date(n.refill_at) - Date.now()) / 1000)} s.`, true);
   G.node = o; G.job = null;
   const d = Math.hypot(p.x - o.x, p.y - o.y);
-  if (d > 1.6) { if (!walkTo(o.x + (p.x < o.x ? -1 : 1), o.y + (n.kind === "pesca" ? 0 : 1))) { if (!walkTo(o.x, o.y + 1)) return toast("Não dá pra chegar até aí.", true); } p.pendingGather = o; toast(`Indo até ${n.name}`); return; }
+  const reach = n.kind === "pesca" ? 4.5 : 1.6;
+  if (d > reach) {
+    // lugares em volta do depósito, do mais perto pro mais longe; o primeiro com caminho ganha
+    const spots = []; for (let r = 1; r <= 4; r++) for (let dy = -r; dy <= r; dy++) for (let dx = -r; dx <= r; dx++) { if (Math.max(Math.abs(dx), Math.abs(dy)) !== r) continue; const x = o.x + dx, y = o.y + dy; if (walk(x, y)) spots.push([x, y, Math.hypot(dx, dy) + Math.hypot(x - p.x, y - p.y) * .02]); }
+    spots.sort((a, b) => a[2] - b[2]);
+    if (!spots.slice(0, 14).some(([x, y]) => walkTo(x, y))) return toast("Não dá pra chegar até esse depósito.", true);
+    p.pendingGather = o; toast(`Indo até ${n.name}`); return; }
   begin();
 }
 async function begin() {

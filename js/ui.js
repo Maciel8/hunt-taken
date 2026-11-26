@@ -242,6 +242,9 @@ export function bindUI() {
   $("btnCenter").addEventListener("click", () => { cam.follow = true; toast("Seguindo o personagem"); });
   $("btnMapTab").addEventListener("click", () => openModal("map"));
   $("worldBtn").addEventListener("click", () => openWorlds()); loadWorlds();
+  // painéis recolhíveis (lembra a escolha)
+  document.querySelectorAll(".panel.collapsible").forEach(pn => { try { if (localStorage.getItem("ht_col_" + pn.id) === "1") pn.classList.add("collapsed"); } catch (e) { }
+    pn.querySelector("h2").addEventListener("click", () => { pn.classList.toggle("collapsed"); try { localStorage.setItem("ht_col_" + pn.id, pn.classList.contains("collapsed") ? "1" : "0"); } catch (e) { } }); });
   $("huntPop").addEventListener("click", async e => { const b = e.target.closest("button"); if (!b) return; if (b.dataset.go) { hideHuntPop(); if (P().huntId === b.dataset.go) return; const st = await act(() => api.startHunt(b.dataset.go)); if (st) goHunt(b.dataset.go); } if (b.dataset.close) hideHuntPop(); });
   $("equip").addEventListener("click", () => openModal("equip"));
   // comportamento de caça: salva no servidor ao mudar

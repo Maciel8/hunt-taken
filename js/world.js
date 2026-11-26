@@ -221,7 +221,12 @@ function ensureReachable() {
     const seen = new Uint8Array(MW * MHA), q = [start]; seen[start] = 1;
     for (let i = 0; i < q.length; i++) { const c = q[i], cx = c % MW, cy = (c / MW) | 0; for (const [dx, dy] of [[1, 0], [-1, 0], [0, 1], [0, -1]]) { const nx = cx + dx, ny = cy + dy; if (nx < 0 || ny < 0 || nx >= MW || ny >= MH) continue; const n = idx(nx, ny); if (seen[n] || block[n]) continue; seen[n] = 1; q.push(n); } }
     let fixed = 0;
-    for (const [tx, ty] of targets) {
+    // bolsões livres que ficaram ilhados (cercados por árvore, pedra ou parede) também ganham trilha
+    const pockets = [], mark = new Uint8Array(MW * MHA);
+    for (let y0 = 1; y0 < MH - 1; y0++) for (let x0 = 1; x0 < MW - 1; x0++) { const c0 = idx(x0, y0); if (seen[c0] || mark[c0] || block[c0]) continue;
+      const pq = [c0]; mark[c0] = 1; for (let i = 0; i < pq.length; i++) { const c = pq[i], cx = c % MW, cy = (c / MW) | 0; for (const [dx, dy] of [[1, 0], [-1, 0], [0, 1], [0, -1]]) { const nx = cx + dx, ny = cy + dy; if (nx < 0 || ny < 0 || nx >= MW || ny >= MH) continue; const n = idx(nx, ny); if (mark[n] || seen[n] || block[n]) continue; mark[n] = 1; pq.push(n); } }
+      if (pq.length >= 4) { const m = pq[pq.length >> 1]; pockets.push([m % MW, (m / MW) | 0]); } }
+    for (const [tx, ty] of targets.concat(pockets)) {
       if (seen[idx(tx, ty)]) continue;
       // abre uma trilha em linha reta até o ponto alcançado mais perto (derruba árvores e pedras, não cria ponte)
       let best = null, bd = 1e9; for (let i = 0; i < q.length; i += 7) { const c = q[i], d = (c % MW - tx) ** 2 + (((c / MW) | 0) - ty) ** 2; if (d < bd) { bd = d; best = c; } }
@@ -248,10 +253,10 @@ export function freeTile(h) { for (let i = 0; i < 120; i++) { const a = Math.ran
 class Heap { constructor() { this.a = []; } push(n, f) { const a = this.a; a.push([f, n]); let i = a.length - 1; while (i > 0) { const p = (i - 1) >> 1; if (a[p][0] <= a[i][0]) break; [a[p], a[i]] = [a[i], a[p]]; i = p; } } pop() { const a = this.a, top = a[0], last = a.pop(); if (a.length) { a[0] = last; let i = 0; for (;;) { const l = 2 * i + 1, r = l + 1; let m = i; if (l < a.length && a[l][0] < a[m][0]) m = l; if (r < a.length && a[r][0] < a[m][0]) m = r; if (m === i) break; [a[m], a[i]] = [a[i], a[m]]; i = m; } } return top[1]; } get size() { return this.a.length; } }
 const G = new Float32Array(MW * MHA), PREV = new Int32Array(MW * MHA), STAMP = new Uint32Array(MW * MHA); let stamp = 0;
 const DIRS = [[1, 0, 1], [-1, 0, 1], [0, 1, 1], [0, -1, 1], [1, 1, 1.4142], [1, -1, 1.4142], [-1, 1, 1.4142], [-1, -1, 1.4142]];
-export function findPath(sx, sy, tx, ty, maxNodes = 40000) {
+export function findPath(sx, sy, tx, ty, maxNodes = 120000) {
   sx = Math.floor(sx + .5); sy = Math.floor(sy + .5); tx = Math.floor(tx + .5); ty = Math.floor(ty + .5);
   if (!walk(tx, ty)) { // destino bloqueado: usa o vizinho livre mais perto
-    let ok = false; for (let r = 1; r < 4 && !ok; r++) for (let dy = -r; dy <= r && !ok; dy++) for (let dx = -r; dx <= r && !ok; dx++) if (walk(tx + dx, ty + dy)) { tx += dx; ty += dy; ok = true; }
+    let ok = false; for (let r = 1; r < 7 && !ok; r++) for (let dy = -r; dy <= r && !ok; dy++) for (let dx = -r; dx <= r && !ok; dx++) if (walk(tx + dx, ty + dy)) { tx += dx; ty += dy; ok = true; }
     if (!ok) return null;
   }
   if (sx === tx && sy === ty) return [];
