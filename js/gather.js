@@ -25,11 +25,39 @@ export async function loadNodes() {
   }
   resetBucket();
 }
+// --- leitura amigável: o que é, se dá pra coletar agora e por quê não ---
+export const PROF_VERB = { mineracao: "Minerar", lenharia: "Cortar", agricultura: "Colher", pesca: "Pescar" };
+export const TOOL_ICON = { picareta: "pickaxe", machado: "axe", foice: "sickle", vara: "rod" };
+const TOOL_NAME = { picareta: "picareta", machado: "machado", foice: "foice", vara: "vara de pesca" };
+export function bestTool(kind) {
+  let best = null; for (const i of S.inventory) { if (!["bag", "equip", "protected"].includes(i.container)) continue; const pr = CAT.templates[i.template]?.props || {}; if ((pr.tool || i.roll?.tool) !== kind) continue;
+    const t = { tier: +(i.roll?.tier ?? pr.tier ?? 1), dur: +(i.roll?.dur ?? pr.dur ?? 100) }; if (!best || t.tier > best.tier) best = t; } return best; }
+export function nodeStatus(o) {
+  const n = o.node, lvl = (S.profs || []).find(p => p.id === n.prof)?.level || 1, tool = bestTool(n.tool);
+  const empty = n.remaining <= 0 && n.refill_at && new Date(n.refill_at) > new Date();
+  if (empty) return { ok: false, state: "empty", why: `esgotado, volta em ${Math.ceil((new Date(n.refill_at) - Date.now()) / 1000)} s` };
+  if (n.owner === "forte" && !(S.fortOwner && S.clan && S.fortOwner.tag === S.clan.tag)) return { ok: false, state: "locked", why: "só o clã que domina o Forte" };
+  if (lvl < n.req) return { ok: false, state: "locked", why: `precisa de ${PROFN[n.prof] || n.prof} nível ${n.req} (você tem ${lvl})` };
+  if (!tool) return { ok: false, state: "locked", why: `precisa de ${TOOL_NAME[n.tool] || n.tool}` };
+  if (tool.tier < n.tool_tier) return { ok: false, state: "locked", why: `ferramenta fraca: precisa de nível ${n.tool_tier}` };
+  if (tool.dur <= 0) return { ok: false, state: "locked", why: "ferramenta quebrada: conserte na Mochila" };
+  if (S.carry && S.carry.used >= S.carry.cap) return { ok: false, state: "locked", why: "carga cheia: venda ou guarde materiais" };
+  return { ok: true, state: "ok", why: "clique pra " + (PROF_VERB[n.prof] || "coletar").toLowerCase() };
+}
+const PROFN = { mineracao: "Mineração", lenharia: "Lenharia", agricultura: "Agricultura", pesca: "Pesca" };
+// o depósito utilizável mais perto (por profissão, ou do mesmo tipo do atual)
+export function nearestNode(filter) { const p = P(); let best = null, bd = 1e9; for (const o of NODES.values()) { if (!filter(o.node) || !nodeStatus(o).ok) continue; const d = Math.hypot(o.x - p.x, o.y - p.y); if (d < bd) { bd = d; best = o; } } return best; }
+export function gatherNearest(prof) {
+  const o = nearestNode(n => n.prof === prof);
+  if (!o) { const any = [...NODES.values()].filter(x => x.node.prof === prof).map(x => nodeStatus(x).why); return toast(any.length ? `Nenhum depósito disponível agora: ${any.find(w => !w.startsWith("esgotado")) || "todos esgotados"}` : "Nenhum depósito encontrado.", true); }
+  startGather(o);
+}
 export const nodeAt = (x, y) => { for (const o of NODES.values()) if (Math.abs(o.x - x) <= 1 && Math.abs(o.y - y) <= 1) return o; return null; };
 
 const G = { node: null, job: null, until: 0, busy: false };
 export function startGather(o) {
-  const p = P(); const n = o.node;
+  const p = P(); const n = o.node; const st = nodeStatus(o);
+  if (!st.ok && st.state !== "empty") return toast(`${n.name}: ${st.why}`, true);
   if (n.remaining <= 0 && n.refill_at && new Date(n.refill_at) > new Date()) return toast(`${n.name} esgotado. Volta em ${Math.ceil((new Date(n.refill_at) - Date.now()) / 1000)} s.`, true);
   G.node = o; G.job = null;
   const d = Math.hypot(p.x - o.x, p.y - o.y);
@@ -41,7 +69,10 @@ async function begin() {
   try {
     const r = await api.gatherStart(o.node.id); G.job = r.job; G.until = Date.now() + r.seconds * 1000; p.gathering = { node: o, until: G.until, total: r.seconds * 1000 }; p.task = "gather";
     const dx = o.x - p.x, dy = o.y - p.y; p.dir = Math.abs(dx) > Math.abs(dy) ? (dx > 0 ? "right" : "left") : (dy > 0 ? "down" : "up");
-  } catch (e) { toast(e.message, true); stop(); } finally { G.busy = false; }
+  } catch (e) {
+    // esgotou no servidor: segue pro próximo do mesmo tipo em vez de parar
+    if (/esgotado/.test(e.message)) { o.node.remaining = 0; o.node.refill_at = new Date(Date.now() + 300000).toISOString(); const nx = nearestNode(n => n.kind === o.node.kind && n.id !== o.node.id); if (nx) { G.busy = false; toast(`${o.node.name} esgotado. Indo pro próximo.`); return startGather(nx); } }
+    toast(e.message, true); stop(); } finally { G.busy = false; }
 }
 async function finish() {
   if (!G.job || G.busy) return; G.busy = true; const p = P(), o = G.node;
@@ -50,6 +81,8 @@ async function finish() {
     for (const g of r.got) { const rar = g.rarity || 0, nm = CAT.templates[g.t]?.name || g.t; if (g.bonus || rar >= 2) { log(`<b style="color:${RARITY[rar].color}">${nm}</b> ${g.bonus ? "(achado)" : ""} · ${g.purity}% de pureza`, "good"); toast(`Achado: ${nm} (${RARITY[rar].name})`); burst(o, RARITY[rar].color, 18, 3); ring(o, RARITY[rar].color); } }
     S.clog.unshift({ msg: r.got.map(g => `+${g.q} ${CAT.templates[g.t]?.name || g.t}`).join(", "), kind: "kill", t: S.t }); S.clog.length = Math.min(S.clog.length, 6);
     o.node.remaining = Math.max(0, o.node.remaining - 1);
+    if (o.node.remaining <= 0) { o.node.refill_at = new Date(Date.now() + 300000).toISOString(); const nx = nearestNode(n => n.kind === o.node.kind) || nearestNode(n => n.prof === o.node.prof);
+      if (nx) { log(`${o.node.name} esgotou. Indo pro próximo: ${nx.node.name}.`, "info"); p.task = "idle"; p.gathering = null; later(.4, () => startGather(nx)); } else { toast(`${o.node.name} esgotou e não há outro disponível agora.`); stop(); } return; }
     later(.2, () => { if (G.node === o && p.task === "gather") begin(); });     // continua coletando sozinho
   } catch (e) { toast(e.message, true); stop(); } finally { G.busy = false; }
 }

@@ -3,7 +3,7 @@ import { TICK, HUNTS, HOME } from "./data.js";
 import { buildWorld, huntAt, inVila, NPCS } from "./world.js";
 import { S, P, newPlayer, spawnAll, playerTick, monTick, applyServer, log, fmt, walkTo, updateMovement, npcTick, keys } from "./sim.js";
 import { loadAssets } from "./art.js";
-import { render, resize, tileAt, cv, cam, miniHit, viewSize, zoomBy, screenAt } from "./render.js";
+import { render, resize, tileAt, cv, cam, miniHit, viewSize, zoomBy, screenAt, hover } from "./render.js";
 import { renderAll, renderFeed, bindUI, showCreate, showReports, toast, showHuntPop, hideHuntPop, act, openModal } from "./ui.js";
 import { showAuth, showNewPassword } from "./authui.js";
 import { api, auth } from "./net.js";
@@ -14,7 +14,7 @@ import { loadCatalog } from "./progress.js";
 import { checkNotices } from "./notify.js";
 import { setPingHandler } from "./presence.js";
 import { openAltar, mythicTick, ALTAR } from "./mythic.js";
-import { loadNodes, nodeAt, startGather, gatherTick, startNodePolling, stop as stopGather } from "./gather.js";
+import { loadNodes, nodeAt, startGather, gatherTick, startNodePolling, stop as stopGather, gatherNearest } from "./gather.js";
 import { objects, DOORS, interiorAt } from "./world.js";
 import { ITEMS, RARITY } from "./data.js";
 import { burst, ring } from "./fx.js";
@@ -46,6 +46,7 @@ function enter(st) {
   checkNotices();
   { const n = (S.trades || []).filter(t => !t.mine).length, k = (S.clanInvites || []).length; if (n) log(`Você tem ${n} proposta(s) de troca esperando. Veja em Trocas.`, "good"); if (k) log(`Você tem ${k} convite(s) de clã. Veja na aba Clã.`, "good"); }
   setPingHandler(async () => { try { applyServer(await api.state()); checkNotices(); renderAll(); } catch (e) { } });
+  if (!started) { document.getElementById("gatherBar").addEventListener("click", e => { const b = e.target.closest("[data-gprof]"); if (b) { hideHuntPop(); gatherNearest(b.dataset.gprof); } }); }
   if (!started) { started = true; loadCatalog().then(() => renderAll()); loadNodes(); startNodePolling(); bindUI(); bindCanvas(); bindChat(); bindNpc(); bindQuestbar(() => renderAll()); loadQuests().then(() => renderAll()); renderAll(); requestAnimationFrame(frame); loop(); }
   const rep = (st.reports || []).filter(r => !r.seen);
   if (rep.length) { showReports(rep); api.reportsSeen().catch(() => {}); log(`Voltou: +${fmt(rep.reduce((a, r) => a + Number(r.exp), 0))} exp, +${fmt(rep.reduce((a, r) => a + Number(r.gold_in), 0))} gold enquanto estava fora.`); }
@@ -76,7 +77,7 @@ function bindCanvas() {
   const pts = new Map(); let drag = null, pinch = null;
   cv.addEventListener("pointerdown", ev => { cv.setPointerCapture(ev.pointerId); pts.set(ev.pointerId, screenAt(ev)); if (pts.size === 2) { const [a, b] = [...pts.values()]; pinch = { d: Math.hypot(a.x - b.x, a.y - b.y) }; drag = null; } else drag = { x: ev.clientX, y: ev.clientY, cx: cam.x, cy: cam.y, moved: false }; });
   cv.addEventListener("pointermove", ev => {
-    if (!pts.has(ev.pointerId)) return; pts.set(ev.pointerId, screenAt(ev));
+    if (!pts.has(ev.pointerId)) { const { x, y } = tileAt(ev), nd = nodeAt(x, y); if (nd !== hover.node) { hover.node = nd; cv.style.cursor = nd ? "pointer" : ""; } return; } pts.set(ev.pointerId, screenAt(ev));
     if (pinch && pts.size === 2) { const [a, b] = [...pts.values()], d = Math.hypot(a.x - b.x, a.y - b.y); if (d > 10) { zoomBy(d / pinch.d, (a.x + b.x) / 2, (a.y + b.y) / 2); pinch.d = d; } return; }
     if (!drag) return; const r = cv.getBoundingClientRect(), k = cv.width / r.width / cam.zoom; const dx = (ev.clientX - drag.x) * k, dy = (ev.clientY - drag.y) * k;
     if (Math.abs(dx) + Math.abs(dy) > 6 / cam.zoom) { drag.moved = true; cam.follow = false; cam.x = drag.cx - dx; cam.y = drag.cy - dy; }

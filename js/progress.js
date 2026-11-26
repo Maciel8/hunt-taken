@@ -1,6 +1,8 @@
 // Telas da expansão: Personagem (atributos, classe, especialização, habilidades), Ofícios, Oficina, materiais e ficha de item fabricado.
 // Tudo que muda número passa pelo servidor; aqui só monta formulário e mostra o estado que voltou.
 import { RARITY, ATTRS, ITEMS, MONS } from "./data.js";
+import { NODES as GNODES, nodeStatus as gStatus, gatherNearest as gNearest } from "./gather.js";
+const ticonRaw = n => `<img class="ic" src="assets/sprites/${n}.png" alt="" style="width:20px;height:20px">`;
 import { S, P, fmt } from "./sim.js";
 import { api } from "./net.js";
 import { act, toast } from "./ui.js";
@@ -55,10 +57,15 @@ export function renderChar(box) {
 const CATN = { coleta: "Coleta", processo: "Processamento", fabricacao: "Fabricação", servico: "Serviço" };
 export function renderProfs(box) {
   const tools = S.inventory.filter(i => (ITEMS[i.template]?.slot === "tool") || i.roll?.tool);
-  box.innerHTML = `<p class="muted">Cada ofício sobe de 1 a 100 só com uso. Coleta acontece nos depósitos do mapa: clique numa rocha, veio, árvore, moita ou ponto de pesca. O resto acontece na Oficina.</p>
+  const GP = [["mineracao", "Minerar", "pickaxe", "rochas e veios"], ["lenharia", "Cortar", "axe", "árvores"], ["agricultura", "Colher", "sickle", "moitas de ervas"], ["pesca", "Pescar", "rod", "pontos de pesca"]];
+  const cnt = prof => { let ok = 0, tot = 0; for (const o of GNODES.values()) if (o.node.prof === prof) { tot++; if (gStatus(o).ok) ok++; } return [ok, tot]; };
+  box.innerHTML = `<div class="gatherhelp"><b>Como coletar</b><ol><li>Clique num botão abaixo (ou nos botões no canto do mapa): o personagem anda até o depósito mais perto que você consegue usar.</li><li>Ele coleta sozinho, em ciclo. Quando o depósito esgota, segue pro próximo do mesmo tipo.</li><li>No mapa, cada depósito tem um ícone: <b style="color:#7ee07e">verde</b> dá pra coletar, <b style="color:#ffbf3a">amarelo</b> falta nível ou ferramenta (passe o mouse pra ver), <b style="color:#9a94a8">cinza</b> está esgotado.</li><li>Clicar em qualquer outro lugar ou andar com WASD para a coleta.</li></ol>
+    <div class="gbtns">${GP.map(([id, v, ic, d]) => { const [ok, tot] = cnt(id); return `<button class="${ok ? "primary" : ""}" data-gnear="${id}">${ticonRaw(ic)} ${v} <small>${ok}/${tot} ${d}</small></button>`; }).join("")}</div></div>
+  <p class="muted">Cada ofício sobe de 1 a 100 só com uso. Depois da coleta, o refino e a fabricação acontecem na Oficina.</p>
   <div class="profgrid">${Object.keys(CATN).map(cat => `<div><h4>${CATN[cat]}</h4>${S.profs.filter(p => p.category === cat).map(p => { const pct = p.next > p.cur ? Math.min(100, (p.exp - p.cur) / (p.next - p.cur) * 100) : 100; return `<div class="prof"><div class="row"><b>${esc(p.name)}</b><b>${p.level}</b></div><small>${esc(p.tier)}</small><div class="bar"><i style="width:${pct}%"></i></div></div>`; }).join("")}</div>`).join("")}</div>
   <h4>Ferramentas</h4><div class="tools">${tools.map(i => { const r = i.roll || {}, pr = ITEMS[i.template]?.props || {}, dur = r.dur ?? pr.dur, mx = r.maxdur ?? pr.dur; return `<div class="tool"><span class="slotv r${i.rarity}">${ticon(i.template)}</span><span><b>${esc(r.name || tname(i.template))}</b><small>nível ${r.tier ?? pr.tier ?? 1} · eficiência ${r.eff ?? pr.eff ?? 1}× · velocidade ${r.speed ?? pr.speed ?? 1}×</small><small>durabilidade ${dur ?? "—"}/${mx ?? "—"}</small></span>${dur != null && mx && dur < mx ? `<button data-fix="${i.id}">Consertar</button>` : ""}</div>`; }).join("") || '<p class="muted">Nenhuma. Compre na loja do mercador.</p>'}</div>`;
   box.querySelectorAll("[data-fix]").forEach(b => b.onclick = () => act(() => api.itemAction(b.dataset.fix, "consertar"), "Consertado").then(() => renderProfs(box)));
+  box.querySelectorAll("[data-gnear]").forEach(b => b.onclick = () => { document.getElementById("modal").hidden = true; gNearest(b.dataset.gnear); });
 }
 
 // ---------- Oficina ----------

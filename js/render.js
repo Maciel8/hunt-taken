@@ -4,6 +4,8 @@ import { objects, huntAt, regionAt, zoneAt, NPCS, ROOMS, interiorAt } from "./wo
 import { S, fx, occupantsOf } from "./sim.js";
 import { A, drawGround, drawObject, drawProps, drawMon, drawUnit, CH } from "./art.js";
 import { updateFx, drawFx } from "./fx.js";
+import { NODES, nodeStatus, TOOL_ICON, PROF_VERB } from "./gather.js";
+export const hover = { node: null };
 
 export const cv = document.getElementById("view"), cx = cv.getContext("2d");
 let VW = cv.width, VH = cv.height;
@@ -67,6 +69,18 @@ export function render(dt) {
   for (const n of NPCS) { const x = sx((n.x + .5) * T), y = sy((n.y + .5) * T - 38); if (x > -40 && x < VW + 40 && y > -10 && y < VH + 40) label(`NPC · ${n.title}`, x, y, "#ffd27a", 10, "rgba(60,40,10,.85)"); }
   for (const b of S.others || []) label(`${b.name} · ${b.lvl}`, sx((b.x + .5) * T), sy((b.y + .5) * T - 40), KING[b.king].color);
   label(`${P.name} · ${P.lvl}`, sx((P.x + .5) * T), sy((P.y + .5) * T - 40), KING[P.king].color);
+  // depósitos: ícone flutuante da ferramenta (verde = dá pra coletar, amarelo = falta requisito, cinza = esgotado)
+  const tnow = performance.now() / 1000;
+  for (const o of NODES.values()) { const x = sx((o.x + .5) * T), y = sy(o.y * T - 22) + Math.sin(tnow * 2 + o.x) * 2.5; if (x < -20 || x > VW + 20 || y < -20 || y > VH + 30) continue;
+    const st = nodeStatus(o), col = st.state === "ok" ? "#4fcf6a" : st.state === "empty" ? "#6d6680" : "#e9a92a", hov = hover.node === o, r = (hov ? 15 : 12.5) * Math.min(1.3, Math.max(.8, cam.zoom));
+    cx.globalAlpha = st.state === "empty" ? .6 : 1;
+    if (st.state === "ok") { const pr = r + 4 + Math.sin(tnow * 3 + o.y) * 2.5; cx.fillStyle = "rgba(79,207,106,.28)"; cx.beginPath(); cx.arc(x, y, pr, 0, 6.283); cx.fill(); }
+    cx.fillStyle = col; cx.strokeStyle = "#fff6dc"; cx.lineWidth = hov ? 3 : 2; cx.beginPath(); cx.arc(x, y, r, 0, 6.283); cx.fill(); cx.stroke();
+    cx.fillStyle = "rgba(255,255,255,.22)"; cx.beginPath(); cx.arc(x - r * .25, y - r * .3, r * .55, 0, 6.283); cx.fill();
+    const im = A.sp[TOOL_ICON[o.node.tool]]; if (im) cx.drawImage(im, x - r * .8, y - r * .8, r * 1.6, r * 1.6);
+    cx.globalAlpha = 1; }
+  if (hover.node) { const o = hover.node, st = nodeStatus(o), x = sx((o.x + .5) * T), y = sy(o.y * T - 46);
+    label(`${o.node.name} · ${PROF_VERB[o.node.prof] || "Coletar"} nível ${o.node.req}`, x, y - 16, "#f3ead6", 12); label(st.ok ? "▶ " + st.why : st.why, x, y, st.ok ? "#7ee07e" : st.state === "empty" ? "#bdb6c8" : "#ffbf3a", 11); }
   if (P.gathering) { const k = Math.max(0, Math.min(1, 1 - (P.gathering.until - Date.now()) / P.gathering.total)), x = sx((P.x + .5) * T) - 20, y = sy((P.y + .5) * T - 56); cx.fillStyle = "rgba(14,10,18,.85)"; cx.fillRect(x - 2, y - 2, 44, 8); cx.fillStyle = "#C18B36"; cx.fillRect(x, y, 40 * k, 4); label(P.gathering.node.node.name, x + 20, y - 6, "#ffd27a", 10); }
   for (const m of S.mons) if (m.alive && (m.hp < (m.hpMax || MONS[m.type].hp) || m.boss)) { const x = sx((m.x + .5) * T) - 12, y = sy((m.y + .5) * T + 18); cx.fillStyle = "#15120f"; cx.fillRect(x - 1, y - 1, 26, 5); cx.fillStyle = m.boss ? "#ffcf5a" : "#e33"; cx.fillRect(x, y, 24 * Math.max(0, m.hp) / (m.hpMax || MONS[m.type].hp), 3); if (m.boss) label(MONS[m.type].name, x + 12, y - 44, "#ffcf5a"); }
   for (let i = fx.length - 1; i >= 0; i--) { const f = fx[i]; f.t -= dt * 10; if (f.t <= 0) { fx.splice(i, 1); continue; } cx.font = "900 12px Nunito"; cx.textAlign = "center"; const x = sx((f.x + .5) * T), y = sy((f.y + .5) * T - 30) - (8 - f.t) * 2; cx.fillStyle = "#15120f"; cx.fillText(f.v, x + 1, y + 1); cx.fillStyle = f.c; cx.fillText(f.v, x, y); }
@@ -79,6 +93,7 @@ export function render(dt) {
   cx.fillStyle = "rgba(10,8,14,.9)"; cx.fillRect(mx - 4, my - 4, MINI.w + 8, MINI.h + 8); cx.strokeStyle = "#C18B36"; cx.lineWidth = 2; cx.strokeRect(mx - 3, my - 3, MINI.w + 6, MINI.h + 6);
   cx.imageSmoothingEnabled = true; if (A.paint) cx.drawImage(A.paint, mx, my, MINI.w, MINI.h); cx.imageSmoothingEnabled = false;
   const kx = MINI.w / MW, ky = MINI.h / MH;
+  for (const o of NODES.values()) { const st = nodeStatus(o).state; cx.fillStyle = st === "ok" ? "#7ee07e" : st === "empty" ? "rgba(120,116,136,.6)" : "rgba(255,191,58,.8)"; cx.fillRect(mx + o.x * kx - 1, my + o.y * ky - 1, 2, 2); }
   for (const h of HUNTS) { const o = occupantsOf(h.id).length; if (o) { cx.fillStyle = "#ff8a8a"; cx.fillRect(mx + h.cx * kx - 2, my + h.cy * ky - 2, 4, 4); } }
   cx.strokeStyle = "rgba(255,255,255,.85)"; cx.lineWidth = 1; cx.strokeRect(mx + ox / T * kx + .5, my + oy / T * ky + .5, WW / T * kx, WH / T * ky);
   for (const b of S.others || []) if (b.y < MH) { cx.fillStyle = "#111"; cx.fillRect(mx + b.x * kx - 2, my + b.y * ky - 2, 5, 5); cx.fillStyle = KING[b.king]?.color || "#fff"; cx.fillRect(mx + b.x * kx - 1, my + b.y * ky - 1, 3, 3); }
