@@ -3,7 +3,7 @@
 // exata até a linha (bordas suaves, margem de terra e grama, ponte de tábuas), como o art.js desenha no coração.
 // Níveis: hi = 32 px/tile (zoom perto), mid = 8 px/tile (zoom médio, texturas reduzidas), lod = 1 px/tile (bem longe).
 // Cache L2: IndexedDB (WebP por pedaço e nível, por versão do build).
-import { initNet, chunkTiles, chunkGround, segsNear, B, CHUNK, OX, OY, vnoise, hashTile, isWater, BIOME_RGB, NET } from "./terrain.js";
+import { initNet, chunkTiles, chunkGround, chunkObjects, segsNear, B, CHUNK, OX, OY, vnoise, hashTile, isWater, BIOME_RGB, NET } from "./terrain.js";
 const T = 32;
 let TEX = {}, MIP = {}, VERSION = "dev", db = null;
 
@@ -16,7 +16,11 @@ const TEX_OF = { [B.BEACH]: "sand", [B.CLIFF]: "rock", [B.PLAINS]: "grass", [B.F
   [B.ROAD]: "dirt", [B.BRIDGE]: "dirt", [B.CITY]: "plaza", [B.LAVA]: "lava", [B.DOCK]: "bridge", [B.LAKE]: "water", [B.RIVER]: "water", [B.MURKY]: "swamp" };
 // tons por bioma sobre a textura (o coração usa as mesmas texturas; aqui só diferencia biomas que não existem lá)
 const TONE = { [B.ANCIENT]: [.85, .95, 1.05], [B.VOLCANIC]: [.62, .55, .55], [B.GLACIER]: [.9, .97, 1.06], [B.ICE]: [.82, .92, 1.08], [B.PEAK]: [.85, .85, .9], [B.MURKY]: [.7, .75, .55] };
-function tex(name, f, x, y) { const t = f === 1 ? TEX[name] : (MIP[name] && MIP[name][f]); if (!t) return [120, 160, 80]; const tx = ((x % t.w) + t.w) % t.w, ty = ((y % t.h) + t.h) % t.h, i = (ty * t.w + tx) * 4; return [t.data[i], t.data[i + 1], t.data[i + 2]]; }
+// no zoom médio pega o texel mais próximo (igual ao coração desenhado reduzido), não a média
+function tex(name, f, x, y) { if (f !== 1) { x *= f; y *= f; f = 1; } const t = TEX[name]; if (!t) return [120, 160, 80]; const tx = ((x % t.w) + t.w) % t.w, ty = ((y % t.h) + t.h) % t.h, i = (ty * t.w + tx) * 4; return [t.data[i], t.data[i + 1], t.data[i + 2]]; }
+// chão temático de cada cidade: base, ruas e praça
+const CITY_TH = { valen: { base: "grass", street: "cobble", plaza: "plaza" }, khazad: { base: "stone_dark", street: "cobble", plaza: "rock", tint: [.85, .82, .8] },
+  solkar: { base: "sand", street: "plaza", plaza: "plaza", tint: [1.04, .98, .86] }, sylvana: { base: "grass_dark", street: "bridge", plaza: "grass" }, nocthar: { base: "ruins", street: "cobble", plaza: "ruins", tint: [.82, .74, .98] } };
 const OCEAN = { [B.DEEP]: [16, 34, 70], [B.OCEAN]: [26, 58, 106], [B.SHALLOW]: [48, 110, 150] };
 function segD(px, py, a, b) { const dx = b[0] - a[0], dy = b[1] - a[1], L = dx * dx + dy * dy; let t = L ? ((px - a[0]) * dx + (py - a[1]) * dy) / L : 0; t = t < 0 ? 0 : t > 1 ? 1 : t; return Math.hypot(px - a[0] - t * dx, py - a[1] - t * dy); }
 
@@ -42,7 +46,8 @@ function renderChunk(cx, cy, PX) {
   const lerpG = (G, px, py) => { const gi = px / DS, gj = py / DS, i0 = Math.min(DW - 2, gi | 0), j0 = Math.min(DW - 2, gj | 0), ti = gi - i0, tj = gj - j0, k = j0 * DW + i0;
     return (G[k] * (1 - ti) + G[k + 1] * ti) * (1 - tj) + (G[k + DW] * (1 - ti) + G[k + DW + 1] * ti) * tj; };
   // cidade perto deste pedaço (ruas de pedra sobre grama, como a Vila de Arken)
-  const city = NET.cities.find(c => !c.heart && Math.abs(c.x - (tx0 + CHUNK / 2)) < c.plaza + CHUNK && Math.abs(c.y - (ty0 + CHUNK / 2)) < c.plaza + CHUNK);
+  const city = NET.cities.find(c => !c.heart && Math.abs(c.x - (tx0 + CHUNK / 2)) < (c.rx || c.plaza) + CHUNK && Math.abs(c.y - (ty0 + CHUNK / 2)) < (c.ry || c.plaza) + CHUNK);
+  const TH = city && CITY_TH[city.theme];
   for (let py = 0; py < N; py++) {
     const gj = py / STEP, j0 = Math.min(GW - 2, gj | 0), tj = gj - j0;
     for (let px = 0; px < N; px++) {
@@ -61,10 +66,11 @@ function renderChunk(cx, cy, PX) {
         let shore = false; for (const [dx, dy] of [[.45, 0], [-.45, 0], [0, .45], [0, -.45]]) { const nb = at(fx + ox + dx, fy + oy + dy); if (!isWater(nb) && nb !== B.HEART) { shore = true; break; } }
         if (shore) { const fo = .45 + vnoise((gx0 + fx) * 6, (gy0 + fy) * 6, 513) * .4; r += (235 - r) * fo; g += (245 - g) * fo; bl += (250 - bl) * fo; }
         else if (hashTile(Math.floor(wpx * f / 8), Math.floor(wpy * f / 8), 7) > .996) { r = g = bl = 230; } }
-      else if (b === B.CITY && city) { const dx = tx0 + fx - city.x - .5, dy = ty0 + fy - city.y - .5, rr = Math.hypot(dx, dy);
-        const street = rr < 8.5 || Math.abs(rr - 16.5) < 1.3 || Math.abs(rr - 28.5) < 1.3 || ((Math.abs(dx) < 1.4 || Math.abs(dy) < 1.4) && rr < city.plaza);
-        if (rr < 8.5) [r, g, bl] = tex("plaza", f, wpx, wpy); else if (street) [r, g, bl] = tex("cobble", f, wpx, wpy); else { [r, g, bl] = tex("grass", f, wpx, wpy); r = r * .92 + 8; g = g * .98 + 6; bl *= .85; }
-        if (street && rr >= 8.5) { const edge = Math.min(Math.abs(Math.abs(rr - 16.5) - 1.3), Math.abs(Math.abs(rr - 28.5) - 1.3), Math.abs(Math.abs(dx) - 1.4), Math.abs(Math.abs(dy) - 1.4)); if (edge < .12) { r *= .7; g *= .68; bl *= .66; } } }
+      else if (b === B.CITY && city) { const dx = tx0 + fx - city.x - .5, dy = ty0 + fy - city.y - .5, an = Math.atan2(dy / city.ry, dx / city.rx), en = Math.hypot(dx / city.rx, dy / city.ry) + .03 * Math.sin(5 * an + city.x) + .018 * Math.sin(9 * an + city.y);
+        const plaza = en < .15, ring = Math.abs(en - .42) < .035 || Math.abs(en - .72) < .03, ave = (Math.abs(dx) < 2.2 || Math.abs(dy) < 2.2);
+        if (plaza) [r, g, bl] = tex(TH.plaza, f, wpx, wpy); else if (ring || ave) [r, g, bl] = tex(TH.street, f, wpx, wpy); else [r, g, bl] = tex(TH.base, f, wpx, wpy);
+        const k = TH.tint; if (k) { r *= k[0]; g *= k[1]; bl *= k[2]; }
+        if (!plaza && (ring || ave)) { const edge = Math.min(Math.abs(Math.abs(en - .42) - .035) * city.rx, Math.abs(Math.abs(en - .72) - .03) * city.rx, Math.abs(Math.abs(dx) - 2.2), Math.abs(Math.abs(dy) - 2.2)); if (edge < .14) { r *= .68; g *= .66; bl *= .64; } } }
       else { [r, g, bl] = tex(TEX_OF[b] || "grass", f, wpx, wpy); const tn = TONE[b]; if (tn) { r *= tn[0]; g *= tn[1]; bl *= tn[2]; }
         if (b === B.LAKE) { let shore = 0; for (const [dx, dy] of [[.5, 0], [-.5, 0], [0, .5], [0, -.5]]) { const nb = at(fx + ox + dx, fy + oy + dy); if (!isWater(nb) && nb !== B.HEART) shore = 1; }
           if (shore) { r = 0x4a; g = 0x7a; bl = 0x3e; } } }
@@ -72,7 +78,7 @@ function renderChunk(cx, cy, PX) {
       let eRiv = 9; if (dRiv) { eRiv = lerpG(dRiv, px, py);
         if (eRiv < .69) { if (eRiv > .35) { r = 0x6b; g = 0x52; bl = 0x33; } else if (eRiv > 0) { r = 0x4a; g = 0x7a; bl = 0x3e; } else { [r, g, bl] = tex("water", f, wpx, wpy); if (eRiv < -.33) { r = r * .65 + 7; g = g * .65 + 17.5; bl = bl * .65 + 28; } } } }
       // estradas: borda escura, terra, franja; em cima de água vira ponte de tábuas
-      if (dRoad) { const dr = lerpG(dRoad, px, py);
+      if (dRoad && b !== B.CITY) { const dr = lerpG(dRoad, px, py);
         if (dr < .95) { const wet = eRiv < .69 || isWater(b);
           if (wet && dr < .9) { [r, g, bl] = tex("bridge", f, wpx, wpy); if (dr > .76) { r *= .55; g *= .5; bl *= .45; } }
           else if (dr < .75) [r, g, bl] = tex("dirt", f, wpx, wpy);
@@ -83,10 +89,17 @@ function renderChunk(cx, cy, PX) {
   return img;
 }
 // nível bem afastado: 1 pixel por tile
+// cor média de cada bioma tirada das MESMAS texturas (com o mesmo tom), pra o zoom distante bater com o perto
+const MEANC = {};
+function meanOf(b) { if (MEANC[b]) return MEANC[b]; if (OCEAN[b]) return MEANC[b] = OCEAN[b]; const t = TEX[TEX_OF[b] || "grass"]; if (!t) return BIOME_RGB[b] || [90, 140, 70];
+  let r = 0, g = 0, bl = 0, n = 0; for (let i = 0; i < t.data.length; i += 16) { r += t.data[i]; g += t.data[i + 1]; bl += t.data[i + 2]; n++; } const tn = TONE[b] || [1, 1, 1]; return MEANC[b] = [r / n * tn[0], g / n * tn[1], bl / n * tn[2]]; }
+// nível bem afastado: 1 pixel por tile, mesmas cores médias, árvores escurecem o tile, rio e estrada com as cores de perto
 function renderLod(cx, cy) {
-  const tiles = chunkTiles(cx, cy), n = CHUNK + 2, img = new ImageData(CHUNK, CHUNK), d = img.data;
+  const tiles = chunkTiles(cx, cy), n = CHUNK + 2, img = new ImageData(CHUNK, CHUNK), d = img.data, trees = new Uint8Array(CHUNK * CHUNK);
+  for (const o of chunkObjects(cx, cy, tiles)) if (!o.decor) { const i = o.x - cx * CHUNK, j = o.y - cy * CHUNK; if (i >= 0 && j >= 0 && i < CHUNK && j < CHUNK) trees[j * CHUNK + i] = 1; }
   for (let j = 0; j < CHUNK; j++) for (let i = 0; i < CHUNK; i++) { const b = tiles[(j + 1) * n + i + 1], o = (j * CHUNK + i) * 4; if (b === B.HEART) { d[o + 3] = 0; continue; }
-    const c = BIOME_RGB[b] || [90, 140, 70], x = cx * CHUNK + i, y = cy * CHUNK + j, fv = .92 + (vnoise(x / 5, y / 5, 621) - .5) * .16 + (hashTile(x, y, 623) - .5) * .06;
+    const c = b === B.RIVER ? meanOf(B.LAKE) : b === B.ROAD ? meanOf(B.ROAD) : meanOf(b), x = cx * CHUNK + i, y = cy * CHUNK + j;
+    let fv = .95 + (vnoise(x / 5, y / 5, 621) - .5) * .12 + (hashTile(x, y, 623) - .5) * .05; if (trees[j * CHUNK + i]) fv *= .62;
     d[o] = c[0] * fv; d[o + 1] = c[1] * fv; d[o + 2] = c[2] * fv; d[o + 3] = 255; }
   return img;
 }

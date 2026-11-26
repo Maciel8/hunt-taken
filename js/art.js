@@ -22,7 +22,6 @@ export async function loadAssets() {
   const imgs = await Promise.all(names.map(n => loadImg(`assets/tex/${n}.png`)));
   names.forEach((n, i) => { A.tex[n] = imgs[i] || procTex(64, "#4c8534", ["#41752c", "#5a9a3e"], i); });
   try { const man = await (await fetch("assets/manifest.json", { cache: "no-cache" })).json(); const sp = await Promise.all(man.map(m => loadImg(`assets/sprites/${m.file}`))); man.forEach((m, i) => { if (sp[i]) A.sp[m.name] = sp[i]; }); } catch (e) { }
-  A.paint = await loadImg("assets/mapa-pintura.png");
   const t = A.tex;
   t.snow = snowTex();
   t.ruins = recolor(t.cobble, (r, g, b) => { const l = lum(r, g, b) * .55; return [l * .9 + 18, l * .7 + 10, l * 1.05 + 34]; });
@@ -165,14 +164,21 @@ export function chunkAt(cx, cy) {
   else { chunks.delete(k); chunks.set(k, c); }
   return c;
 }
+// desenha alinhado aos pixels da tela (sem frestas nem linhas entre pedaços em qualquer zoom)
+function snapDraw(g, img, x, y, w, h) { const m = g.getTransform(), x0 = Math.round(m.a * x + m.e), y0 = Math.round(m.d * y + m.f), x1 = Math.round(m.a * (x + w) + m.e), y1 = Math.round(m.d * (y + h) + m.f);
+  g.save(); g.setTransform(1, 0, 0, 1, 0, 0); g.drawImage(img, x0, y0, x1 - x0, y1 - y0); g.restore(); }
 export function drawGround(g, camX, camY, VW, VH) {
   const x0 = Math.floor(camX / (CH * T)), y0 = Math.floor(camY / (CH * T)), x1 = Math.floor((camX + VW) / (CH * T)), y1 = Math.floor((camY + VH) / (CH * T));
   // coração recortado no retângulo exato (o continente aparece em volta); interiores na faixa a partir de IY
   g.save(); g.beginPath(); g.rect(0, 0, MW * T, MH * T); g.rect(0, IY * T, MW * T, (MHA - IYR) * T); g.clip();
-  for (let cy = y0; cy <= y1; cy++) for (let cx = x0; cx <= x1; cx++) { if (cx < 0 || cy < 0 || cx * CH >= MW) continue; const heart = cy * CH < MH, room = cy * CH >= IY && cy * CH < IY + (MHA - IYR); if (!heart && !room) continue; g.drawImage(chunkAt(cx, cy), cx * CH * T, cy * CH * T, CH * T + 1, CH * T + 1); }
+  for (let cy = y0; cy <= y1; cy++) for (let cx = x0; cx <= x1; cx++) { if (cx < 0 || cy < 0 || cx * CH >= MW) continue; const heart = cy * CH < MH, room = cy * CH >= IY && cy * CH < IY + (MHA - IYR); if (!heart && !room) continue; snapDraw(g, chunkAt(cx, cy), cx * CH * T, cy * CH * T, CH * T, CH * T); }
   g.restore();
 }
 
+// muralhas por cidade: cor, topo, linhas, telhado das torres, bandeira
+const WALLS = { valen: { c: "#cbbf9f", top: "#e2d8bc", line: "#a89c80", roof: "#2f5f8f", flag: "#3a8ad0", h: 40 }, khazad: { c: "#4c4a4e", top: "#6c6a70", line: "#35333a", roof: "#5a2a1a", flag: "#d0602a", h: 46 },
+  solkar: { c: "#d8b878", top: "#ecd29a", line: "#b8965a", roof: "#c8902a", flag: "#e8c030", h: 38 }, sylvana: { c: "#7a5a32", top: "#9a7444", line: "#5a4224", roof: "#2f6a2a", flag: "#6ac04a", h: 34, spike: true },
+  nocthar: { c: "#2e2240", top: "#4a3666", line: "#1e1630", roof: "#3a1a5a", flag: "#9a4ae0", h: 48, glow: "rgba(180,110,255,.75)" } };
 // ---------- sprites tingidos ----------
 const TINTS = {
   snow: (r, g, b, a) => [mix(r, 235, .45), mix(g, 242, .45), mix(b, 250, .5)],
@@ -218,6 +224,24 @@ export function drawObject(g, o) {
   switch (o.kind) {
     case "tree": { const big = ["oak", "pine", "willow", "dead", "tree_round"].includes(o.sprite); shadow(g, cx + 4, by - 2, (big ? 18 : 11) * (o.big || 1)); if (!blit(g, o.sprite, cx, by + 2, o.big || 1, hash(o.x, o.y) % 2 === 0, o.tint)) { rect(g, cx - 3, by - 18, 6, 16, "#4a3320"); g.fillStyle = "#2f6a2a"; g.beginPath(); g.arc(cx, by - 26, 14, 0, 6.283); g.fill(); } break; }
     case "peak": { const h = hash(o.x, o.y), w = 30 + h % 14, hh = 34 + (h >>> 6) % 20; shadow(g, cx + 6, by, w * .7); g.fillStyle = "#7d8a98"; g.beginPath(); g.moveTo(cx - w, by); g.lineTo(cx - 2, by - hh); g.lineTo(cx + w, by); g.closePath(); g.fill(); g.fillStyle = "#5d6875"; g.beginPath(); g.moveTo(cx - 2, by - hh); g.lineTo(cx + w, by); g.lineTo(cx + 4, by); g.closePath(); g.fill(); g.fillStyle = "#f4f8fb"; g.beginPath(); g.moveTo(cx - w * .42, by - hh * .55); g.lineTo(cx - 2, by - hh); g.lineTo(cx + w * .4, by - hh * .5); g.lineTo(cx + 6, by - hh * .45); g.lineTo(cx - 4, by - hh * .6); g.closePath(); g.fill(); break; }
+    // muralhas e torres temáticas das cidades do continente
+    case "cwall": { const W = WALLS[o.theme] || WALLS.valen, h = W.h; rect(g, cx - 17, by - h, 34, h, W.c); rect(g, cx - 17, by - h, 34, 4, W.top); for (let yy = by - h + 9; yy < by; yy += 8) rect(g, cx - 17, yy, 34, 1, W.line);
+      if (W.spike) { g.fillStyle = W.top; for (let xx = -15; xx < 16; xx += 8) { g.beginPath(); g.moveTo(cx + xx, by - h); g.lineTo(cx + xx + 3, by - h - 8); g.lineTo(cx + xx + 6, by - h); g.fill(); } }
+      else for (let xx = -16; xx < 16; xx += 10) rect(g, cx + xx, by - h - 6, 6, 6, W.c); break; }
+    case "ctower": { const W = WALLS[o.theme] || WALLS.valen; shadow(g, cx + 8, by, 26, 10); roofTower(g, cx + 16, by, 46, W.h + 34, W.c, W.roof, false);
+      if (W.glow) { g.fillStyle = W.glow; g.beginPath(); g.arc(cx + 16, by - W.h - 50, 7 + Math.sin(performance.now() / 300 + o.x) * 2, 0, 6.283); g.fill(); }
+      if (o.gate) { g.fillStyle = W.flag; g.fillRect(cx + 15, by - W.h - 70, 2, 22); g.fillRect(cx + 17, by - W.h - 70, 14, 9); } break; }
+    case "crystal": { const t = performance.now() / 500 + o.x; g.fillStyle = `rgba(190,120,255,${.25 + Math.sin(t) * .1})`; g.beginPath(); g.arc(cx, by - 26, 22, 0, 6.283); g.fill(); shadow(g, cx + 3, by, 10);
+      g.fillStyle = "#3a2450"; g.fillRect(cx - 8, by - 8, 16, 8); g.fillStyle = "#b47cff"; g.beginPath(); g.moveTo(cx, by - 50); g.lineTo(cx + 9, by - 22); g.lineTo(cx, by - 8); g.lineTo(cx - 9, by - 22); g.closePath(); g.fill();
+      g.fillStyle = "#e6d4ff"; g.beginPath(); g.moveTo(cx, by - 50); g.lineTo(cx + 3, by - 24); g.lineTo(cx, by - 12); g.closePath(); g.fill(); break; }
+    case "dome": { shadow(g, cx + 6, by, 44, 12); rect(g, cx - 38, by - 34, 76, 34, "#e2c38c"); rect(g, cx - 38, by - 34, 76, 4, "#f0d9a8"); g.fillStyle = "#d9a441"; g.beginPath(); g.arc(cx, by - 34, 30, Math.PI, 0); g.fill();
+      g.fillStyle = "#f3c35a"; g.beginPath(); g.arc(cx - 8, by - 44, 10, Math.PI, 0); g.fill(); rect(g, cx - 7, by - 22, 14, 22, "#6a4320"); rect(g, cx - 1, by - 72, 2, 10, "#8a6a3a"); break; }
+    case "forge": { shadow(g, cx + 4, by, 22, 8); rect(g, cx - 20, by - 26, 40, 26, "#4a4440"); rect(g, cx - 20, by - 26, 40, 4, "#6a625c"); rect(g, cx + 6, by - 56, 10, 30, "#3a3430");
+      const t = performance.now() / 200 + o.x; g.fillStyle = `rgba(255,${120 + Math.sin(t) * 40 | 0},30,.9)`; g.fillRect(cx - 14, by - 18, 16, 10); g.fillStyle = "rgba(120,120,120,.35)"; g.beginPath(); g.arc(cx + 11, by - 62 - (t * 6 % 20), 6, 0, 6.283); g.fill(); blit(g, "anvil", cx - 26, by + 2, 1); break; }
+    case "flagpost": { shadow(g, cx + 3, by, 8); rect(g, cx - 5, by - 8, 10, 8, "#6a4a2a"); rect(g, cx - 1, by - 52, 3, 46, "#4a3220"); const w = Math.sin(performance.now() / 260 + o.x) * 3;
+      g.fillStyle = "#f0a030"; g.beginPath(); g.moveTo(cx + 2, by - 52); g.lineTo(cx + 24 + w, by - 46); g.lineTo(cx + 2, by - 38); g.closePath(); g.fill(); g.fillStyle = "#c06a10"; g.fillRect(cx + 2, by - 52, 3, 14); break; }
+    case "redmark": { shadow(g, cx + 4, by, 12); rect(g, cx - 8, by - 44, 16, 44, "#3c3a40"); rect(g, cx - 8, by - 44, 16, 3, "#5c5a62"); rect(g, cx - 2, by - 36, 4, 22, "#a02020");
+      blit(g, "skull", cx, by + 4, .9); const t = performance.now() / 120 + o.x; for (const sx of [-14, 14]) { rect(g, cx + sx - 1, by - 34, 3, 22, "#4a3220"); g.fillStyle = `rgba(255,${80 + (Math.sin(t + sx) * 40 | 0)},20,.95)`; g.beginPath(); g.arc(cx + sx, by - 38, 4 + Math.sin(t * 1.3 + sx), 0, 6.283); g.fill(); g.fillStyle = "rgba(255,90,30,.18)"; g.beginPath(); g.arc(cx + sx, by - 38, 12, 0, 6.283); g.fill(); } break; }
     case "ringmark": { const col = ["#7fd07a", "#f0c24a", "#e0524a"][o.ring - 1]; shadow(g, cx + 3, by, 9); rect(g, cx - 5, by - 26, 10, 26, "#8c8478"); rect(g, cx - 5, by - 26, 10, 3, "#b0a898"); rect(g, cx - 1, by - 44, 2, 20, "#3a2a1a"); g.fillStyle = col; g.beginPath(); g.moveTo(cx + 1, by - 44); g.lineTo(cx + 15, by - 39); g.lineTo(cx + 1, by - 34); g.closePath(); g.fill(); break; }
     case "palm": { shadow(g, cx + 6, by, 16); g.strokeStyle = "#7a5a32"; g.lineWidth = 6; g.beginPath(); g.moveTo(cx, by); g.quadraticCurveTo(cx + 10, by - 30, cx + 4, by - 58); g.stroke(); g.fillStyle = "#3f8a3a"; for (let k = 0; k < 6; k++) { const a = k / 6 * 6.283; g.beginPath(); g.ellipse(cx + 4 + Math.cos(a) * 14, by - 58 + Math.sin(a) * 6, 16, 5, a, 0, 6.283); g.fill(); } break; }
     case "cactus": { shadow(g, cx + 3, by, 9); rect(g, cx - 5, by - 34, 10, 34, "#4f8a3e"); rect(g, cx - 14, by - 24, 6, 12, "#4f8a3e"); rect(g, cx - 14, by - 16, 10, 5, "#4f8a3e"); rect(g, cx + 8, by - 28, 6, 14, "#4f8a3e"); rect(g, cx + 4, by - 18, 10, 5, "#4f8a3e"); rect(g, cx - 3, by - 34, 2, 34, "#6aa852"); break; }
@@ -249,7 +273,7 @@ export function drawObject(g, o) {
       if (o.sprite === "windmill") { shadow(g, cx + 6, by, 22, 8); rect(g, cx - 14, by - 56, 28, 56, "#e2d6bf"); rect(g, cx - 14, by - 56, 4, 56, "#b8ab92"); g.fillStyle = "#8a3a2a"; g.beginPath(); g.moveTo(cx - 18, by - 56); g.lineTo(cx, by - 78); g.lineTo(cx + 18, by - 56); g.fill(); g.strokeStyle = "#5a3e22"; g.lineWidth = 4; const a = (performance.now() / 1600) % 6.283; for (let k = 0; k < 4; k++) { const aa = a + k * 1.5708; g.beginPath(); g.moveTo(cx, by - 60); g.lineTo(cx + Math.cos(aa) * 40, by - 60 + Math.sin(aa) * 40); g.stroke(); } rect(g, cx - 5, by - 16, 10, 16, "#5e4022"); break; }
       const big = ["house", "house2", "house_thatch", "house_thatch2", "tent", "mine", "barn", "tavern", "witch_hut", "cave_entrance", "ice_cave", "wolf_den", "watchtower"].includes(o.sprite); shadow(g, cx + 6, by - 2, big ? 48 : 14, big ? 12 : 6);
       const alias = { ice_cave: ["cave_entrance", "ice"], anvil_forge: ["anvil", null] }[o.sprite] || [o.sprite, null];
-      if (!blit(g, alias[0], cx, by + 4, 1, false, alias[1])) { if (big) rect(g, cx - 30, by - 44, 60, 44, "#7a5a3a"); }
+      if (!blit(g, alias[0], cx, by + 4, 1, false, alias[1] || o.tint || null)) { if (big) rect(g, cx - 30, by - 44, 60, 44, "#7a5a3a"); }
       if (o.door) { g.fillStyle = "rgba(255,210,120,.9)"; g.font = "900 11px Nunito"; g.textAlign = "center"; g.fillText("▼", cx, by + 14); }
       break; }
   }

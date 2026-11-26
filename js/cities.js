@@ -4,7 +4,7 @@ import { rpc } from "./net.js";
 import { S, log } from "./sim.js";
 import { T, ZONES, KING, IY } from "./data.js";
 import { CONT, cities, zoneInfo, zoneKey } from "./continent.js";
-import { OX, OY, ringRadius, HEART } from "./terrain.js";
+import { OX, OY, ringRadius, HEART, cityInside, regionName } from "./terrain.js";
 import { inHeart, zoneAt as heartZoneAt, regionAt } from "./world.js";
 import { toast, renderAll } from "./ui.js";
 const $ = id => document.getElementById(id);
@@ -24,7 +24,8 @@ function localZone() {
   if (y >= IY) return { key: "anel1", name: "Interior", ring: 1 };
   const z = zoneInfo(x, y), ring = z.ring;
   if (inHeart(x, y)) { const hz = heartZoneAt(x, y); return { key: hz, name: regionAt(x, y).name, ring: 1, heart: true }; }
-  return { key: zoneKey(ring), name: z.city && ring <= 3 ? `${z.city.name} · anel ${ring}` : "Terras selvagens", ring };
+  if (z.city && !z.city.heart && cityInside(z.city, x, y) < 1.02) return { key: "anel1", name: z.city.name, ring: 1 };
+  return { key: zoneKey(ring), name: `${regionName(z)} · Tier ${ring}`, ring };
 }
 export function renderZone() {
   const el = $("zoneBox"); if (!el) return; const z = localZone(); if (!z) return;
@@ -32,7 +33,7 @@ export function renderZone() {
   const Z = ZONES[z.key] || ZONES.selvagem;
   $("zoneName").textContent = z.name; $("zoneName").style.color = Z.color; $("zoneName").title = Z.desc;
   const b = $("pvpBtn"); b.disabled = safe || forced; b.classList.toggle("on", on || forced); b.classList.toggle("safe", safe);
-  b.textContent = safe ? "PvP off · seguro" : forced ? "PvP total" : on ? "PvP ligado" : "PvP desligado";
+  b.textContent = safe ? "Zona Segura" : forced ? "PvP LIBERADO" : on ? "PvP ATIVADO" : "PvP DESATIVADO";
   b.title = safe ? "Zona segura: ninguém ataca aqui." : forced ? "Anel 3: PvP obrigatório (menos contra o próprio clã). +80% exp, +60% loot." : on ? `Ligado: +20% exp e +15% loot no anel 2. Pra desligar: 60 s sem lutar${v && v.off_in ? ` (faltam ${v.off_in} s)` : ""}.` : "Ligue pra ganhar +20% exp e +15% loot no anel 2. Outros com PvP ligado podem te atacar.";
 }
 function bindHud() {

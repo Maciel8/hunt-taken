@@ -45,7 +45,7 @@ export function spawnAll() {
 export function spawnNear(cx, cy) {
   if (!S.mk) return;
   for (const h of HUNTS) { if (!h.city) continue; const d = Math.hypot(h.cx - cx, h.cy - cy);
-    if (d < 230 && !S.spawned.has(h.id)) { S.spawned.add(h.id); for (let i = 0; i < h.spawns; i++) S.mons.push(S.mk(h, h.mon)); }
+    if (d < 230 && !S.spawned.has(h.id)) { S.spawned.add(h.id); for (let i = 0; i < h.spawns; i++) S.mons.push(S.mk(h, h.mon)); if (h.boss && MONS[h.boss]) S.mons.push(S.mk(h, h.boss, true)); }
     else if (d > 420 && S.spawned.has(h.id) && S.p?.huntId !== h.id) { S.spawned.delete(h.id); S.mons = S.mons.filter(m => m.hunt !== h.id); } }
 }
 

@@ -49,7 +49,7 @@ export function render(dt) {
   cx.save(); cx.setTransform(z, 0, 0, z, -ox * z, -oy * z);
   const far = !room && z < LOD_ZOOM;
   if (!room) drawContinent(cx, ox, oy, WW, WH, S.t || performance.now() / 1000, z);
-  if (far) { cx.imageSmoothingEnabled = true; if (A.paint) cx.drawImage(A.paint, 0, 0, MW * T, MH * T); cx.imageSmoothingEnabled = false; }   // longe: o coração vira a pintura
+  if (far) { cx.imageSmoothingEnabled = true; if (CONT.heartMid) cx.drawImage(CONT.heartMid, 0, 0, MW * T, MH * T); cx.imageSmoothingEnabled = false; }   // longe: o coração vira a pintura
   else drawGround(cx, ox, oy, WW, WH);
   if (!room) drawShips(cx, performance.now() / 1000);
   const tx0 = Math.floor(ox / T) - 2, ty0 = Math.floor(oy / T) - 2, tx1 = Math.ceil((ox + WW) / T) + 2, ty1 = Math.ceil((oy + WH) / T) + 6;
@@ -60,7 +60,7 @@ export function render(dt) {
   // lista de profundidade
   const ents = [];
   if (!far) for (let by = Math.floor(ty0 / CH) - 1; by <= Math.floor(ty1 / CH) + 1; by++) for (let bx = Math.floor(tx0 / CH) - 1; bx <= Math.floor(tx1 / CH) + 1; bx++) { const list = bucket.get(bx + "," + by); if (!list) continue; for (const o of list) if (o.x >= tx0 - 6 && o.x <= tx1 + 6 && o.y >= ty0 && o.y <= ty1 + 4) ents.push({ y: o.y + 1, d: () => drawObject(cx, o) }); }
-  if (!room && !far) for (const o of procObjects(tx0 - 6, ty0, tx1 + 6, ty1 + 4)) if (!o.decor || z >= .3) ents.push({ y: o.y + 1, d: () => drawObject(cx, o) });
+  if (!room && !far) for (const o of procObjects(tx0 - 6, ty0, tx1 + 6, ty1 + 4)) if (!o.decor || z >= .15) ents.push({ y: o.y + 1, d: () => drawObject(cx, o) });
   if (z >= .05) for (const m of S.mons) if (m.alive && m.x > tx0 && m.x < tx1 && m.y > ty0 && m.y < ty1) ents.push({ y: m.y + 1, d: () => drawMon(cx, m) });
   for (const n of NPCS) if (n.x > tx0 && n.x < tx1 && n.y > ty0 && n.y < ty1) ents.push({ y: n.y + 1, d: () => drawUnit(cx, n) });
   for (const b of S.others || []) ents.push({ y: b.y + 1, d: () => drawUnit(cx, b) });
@@ -100,7 +100,6 @@ export function render(dt) {
   if (room) { label(room.name, VW - 120, 30, "#ffd27a", 12); } else {
   cx.fillStyle = "rgba(10,8,14,.9)"; cx.fillRect(mx - 4, my - 4, MINI.w + 8, MINI.h + 8); cx.strokeStyle = "#C18B36"; cx.lineWidth = 2; cx.strokeRect(mx - 3, my - 3, MINI.w + 6, MINI.h + 6);
   if (CONT.ready) drawMini(mx, my, ox + WW / 2, oy + WH / 2, WW, WH, P);
-  else { cx.imageSmoothingEnabled = true; if (A.paint) cx.drawImage(A.paint, mx, my, MINI.w, MINI.h); cx.imageSmoothingEnabled = false; }
   }
   // log de combate
   cx.font = "700 11px Nunito"; cx.textAlign = "left";
@@ -112,7 +111,7 @@ function drawMini(mx, my, ccx, ccy, WW, WH, P) {
   const span = Math.min(10000, Math.max(mini.span, WW / T * 1.6, WH / T * 1.6 * MINI.w / MINI.h)), h = span * MINI.h / MINI.w, kx = MINI.w / span, ky = MINI.h / h; const x0 = ccx / T - span / 2, y0 = ccy / T - h / 2; mini.cx = x0; mini.cy = y0; mini.used = span;
   cx.save(); cx.beginPath(); cx.rect(mx, my, MINI.w, MINI.h); cx.clip(); cx.fillStyle = "#12233f"; cx.fillRect(mx, my, MINI.w, MINI.h);
   cx.imageSmoothingEnabled = true; cx.drawImage(CONT.overview, (x0 + OX) / 10, (y0 + OY) / 10, span / 10, h / 10, mx, my, MINI.w, MINI.h);
-  if (A.paint) cx.drawImage(A.paint, mx - x0 * kx, my - y0 * ky, MW * kx, MH * ky); cx.imageSmoothingEnabled = false;
+  if (CONT.heartMid) cx.drawImage(CONT.heartMid, mx - x0 * kx, my - y0 * ky, MW * kx, MH * ky); cx.imageSmoothingEnabled = false;
   const tx = x => mx + (x - x0) * kx, ty = y => my + (y - y0) * ky, inside = (x, y) => x > mx && x < mx + MINI.w && y > my && y < my + MINI.h;
   for (const c of contCities()) { if (c.heart) continue; const x = tx(c.x), y = ty(c.y); if (!inside(x, y)) continue; cx.fillStyle = "#ffe6a8"; cx.strokeStyle = "#171522"; cx.lineWidth = 1.5; cx.beginPath(); cx.moveTo(x, y - 5); cx.lineTo(x + 4, y + 3); cx.lineTo(x - 4, y + 3); cx.closePath(); cx.fill(); cx.stroke();
     if (span <= 3000) { cx.font = "800 9px Nunito, sans-serif"; cx.textAlign = "center"; cx.lineWidth = 3; cx.strokeStyle = "rgba(10,8,14,.85)"; cx.strokeText(c.name, x, y - 7); cx.fillStyle = "#fff6e8"; cx.fillText(c.name, x, y - 7); } }

@@ -10,7 +10,7 @@ from PIL import Image
 t = sys.argv[1]
 im = Image.frombytes("RGB", (1000, 1000), open(f"{t}/world-overview.rgb", "rb").read())
 net = json.load(open("assets/world-net.json"))
-paint = Image.open("assets/mapa-pintura.png").convert("RGB").resize((30, 20))
+paint = Image.open("assets/heart-mid.webp").convert("RGB").resize((30, 20), Image.BOX)   # o coração como o jogo desenha (scripts: ver docs/continente.md)
 im.paste(paint, (net["ox"] // 10, net["oy"] // 10))
 im.save("assets/world-overview.png", optimize=True)
 g = json.load(open(f"{t}/world-gen.json"))

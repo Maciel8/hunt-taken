@@ -23,6 +23,7 @@ export async function loadContinent(texSrc, version) {
     const net = await (await fetch("assets/world-net.json", { cache: "no-cache" })).json();
     TR.initNet(net); CONT.net = net;
     CONT.overview = await new Promise(res => { const im = new Image(); im.onload = () => res(im); im.onerror = () => res(null); im.src = "assets/world-overview.png?v=" + (version || ""); });
+    CONT.heartMid = await new Promise(res => { const im = new Image(); im.onload = () => res(im); im.onerror = () => res(null); im.src = "assets/heart-mid.webp?v=" + (version || ""); });
     startWorker(net, tex, version);
     CONT.ready = true;
   } catch (e) { console.warn("continente não carregou", e); }
@@ -34,12 +35,12 @@ export function registerContent(net = CONT.net) {
   for (const m of net.monsters) if (!MONS[m.id]) { const k = { comum: 1, incomum: 1.3, elite: 2.4, miniboss: 6 }[m.cat] || 1;
     MONS[m.id] = { name: m.name, lvl: m.lvl, hp: Math.round(60 + Math.pow(m.lvl, 1.5) * 5 * k), atk: Math.round((8 + m.lvl * 1.6) * (1 + (k - 1) * .25)), def: Math.round(m.lvl * .5), exp: Math.round((10 + Math.pow(m.lvl, 1.7) * 2) * k), gold: [m.lvl, m.lvl * 2 + 2], speed: 1, drop: null, sprite: m.sprite, tint: m.tint, cat: m.cat }; }
   for (const h of net.hunts) if (!HUNTS.find(x => x.id === h.id)) { const r = h.r;
-    HUNTS.push({ id: h.id, name: h.name, why: `Anel ${h.ring} de ${net.cities.find(c => c.id === h.city).name}`, region: h.city, mon: h.mon, spawns: h.wild ? 5 : h.ring === 3 ? 6 : 7, respawn: 14000, r, cx: h.cx, cy: h.cy, rect: { x: h.cx - r, y: h.cy - r, w: 2 * r + 1, h: 2 * r + 1 }, door: [h.cx, h.cy - r], ring: h.ring, city: h.city, zone: ["anel1", "anel2", "anel3", "selvagem"][h.ring - 1] || "selvagem", wild: !!h.wild }); }
+    HUNTS.push({ id: h.id, name: h.name, why: `${h.region || ""} · ${["Zona Segura", "Fronteira Disputada", "Zona Vermelha"][h.ring - 1]} de ${net.cities.find(c => c.id === h.city).name}`, region: h.city, mon: h.mon, boss: h.boss || null, spawns: h.ring === 3 ? 6 : h.ring === 2 ? 6 : 5, respawn: 14000, r, cx: h.cx, cy: h.cy, rect: { x: h.cx - r, y: h.cy - r, w: 2 * r + 1, h: 2 * r + 1 }, door: [h.cx, h.cy - r], ring: h.ring, city: h.city, zone: ["anel1", "anel2", "anel3"][h.ring - 1] || "anel3", wild: true, subregion: h.region, group: h.group }); }
   for (const c of net.cities) if (!c.heart) for (const n of CITY_NPCS[c.id] || []) { const [dx, dy, voc, title, extra] = n; if (!NPCS.find(q => q.title === title && q.city === c.id)) NPCS.push({ x: c.x + dx, y: c.y + dy, voc, title, king: "grey", city: c.id, ...extra, dir: "down", moving: false, anim: 0, npc: true }); }
-  ZONES.anel1 ||= { name: "Anel 1 · cidade", desc: "Zona segura: PvP desligado.", risk: "Sem risco", color: "#9cc287", tint: null };
-  ZONES.anel2 ||= { name: "Anel 2 · fronteira", desc: "+30% exp e +25% drop. PvP só pra quem ligar (botão no topo): +20% exp e +15% loot.", risk: "Médio", color: "#e9c46a", tint: null };
-  ZONES.anel3 ||= { name: "Anel 3 · zona vermelha", desc: "PvP total, menos contra o próprio clã. +80% exp, +60% loot, elites e depósitos exclusivos.", risk: "Muito alto", color: "#e07a7a", tint: "rgba(168,61,61,.10)" };
-  ZONES.selvagem ||= { name: "Terras selvagens", desc: "Entre as cidades. PvP só pra quem ligar.", risk: "Médio", color: "#b9a37a", tint: null };
+  ZONES.anel1 ||= { name: "Zona Segura", desc: "Território nível 1: monstros iniciais da região, PvP 100% desativado.", risk: "Sem risco", color: "#7fd07a", tint: null };
+  ZONES.anel2 ||= { name: "Fronteira Disputada — PvP Opcional", desc: "Território nível 2: +30% exp e +25% drop. PvP só pra quem ligar (botão no topo): +20% exp e +15% loot; desligar exige 60 s sem lutar.", risk: "Médio", color: "#f0b040", tint: null };
+  ZONES.anel3 ||= { name: "Zona Vermelha — PvP Liberado", desc: "Território nível 3: monstros brutais (elite e chefes), +80% exp, +60% loot, depósitos de diamante, mitril e adamantita. PvP obrigatório, menos contra o próprio clã.", risk: "Muito alto", color: "#e05a4a", tint: "rgba(168,61,61,.08)" };
+  ZONES.selvagem ||= ZONES.anel3;
 }
 
 // ---------- pedaços lógicos (colisão + objetos) ----------
@@ -66,13 +67,12 @@ export function procObjects(tx0, ty0, tx1, ty1) {
 }
 // ---------- região e zona ----------
 export function zoneInfo(x, y) { if (!CONT.ready) return { city: null, ring: 4 }; return TR.zoneAt(x, y); }
-export const zoneKey = ring => ring === 1 ? "anel1" : ring === 2 ? "anel2" : ring === 3 ? "anel3" : "selvagem";
+export const zoneKey = ring => ring === 1 ? "anel1" : ring === 2 ? "anel2" : "anel3";
 export function procRegion(x, y) {
-  if (!CONT.ready) return { id: "mar", name: "Mar", lvl: 1, zone: "selvagem", realm: "Eldoria", tier: "selvagem" };
-  const z = TR.zoneAt(x, y), b = procTile(x, y), zone = zoneKey(z.ring);
-  if (z.city && z.ring === 1) return { id: z.city.id, name: z.city.name, lvl: 1, zone, realm: "Eldoria", tier: "segura", city: z.city };
-  const bn = TR.BIOME_NAME[b] || "Terras", near = z.city && z.ring <= 3 ? z.city : null;
-  return { id: "b" + b + (near ? "_" + near.id + z.ring : ""), name: bn, sub: near ? `${zone === "anel3" ? "Zona vermelha" : "Fronteira"} de ${near.name}` : null, lvl: 1, zone, realm: "Eldoria", tier: "selvagem", city: near };
+  if (!CONT.ready) return { id: "mar", name: "Mar", lvl: 1, zone: "anel3", realm: "Eldoria", tier: "selvagem" };
+  const z = TR.zoneAt(x, y), zone = zoneKey(z.ring);
+  if (z.city && !z.city.heart && TR.cityInside(z.city, x, y) < 1.02) return { id: z.city.id, name: z.city.name, lvl: 1, zone: "anel1", realm: "Eldoria", tier: "segura", city: z.city };
+  return { id: (z.city ? z.city.id : "mar") + z.ring, name: TR.regionName(z), sub: ZONES[zone]?.name, lvl: 1, zone, realm: "Eldoria", tier: ["segura", "hostil", "lendaria"][z.ring - 1], city: z.city, ring: z.ring };
 }
 export const procZone = (x, y) => zoneKey(zoneInfo(x, y).ring);
 
@@ -152,6 +152,9 @@ function startWorker(net, tex, version) {
   } catch (e) { console.warn("sem worker", e); }
 }
 function request(tier, cx, cy) { const k = cx + "," + cy; if (L1[tier].has(k) || pending.has(tier + ":" + k) || !CONT.worker || inflight >= 4) return; pending.add(tier + ":" + k); inflight++; CONT.worker.postMessage({ type: "chunk", tier, cx, cy }); }
+// desenha alinhado aos pixels da tela (sem frestas nem linhas entre pedaços em qualquer zoom)
+function snapDraw(g, img, x, y, w, h) { const m = g.getTransform(), x0 = Math.round(m.a * x + m.e), y0 = Math.round(m.d * y + m.f), x1 = Math.round(m.a * (x + w) + m.e), y1 = Math.round(m.d * (y + h) + m.f);
+  g.save(); g.setTransform(1, 0, 0, 1, 0, 0); g.drawImage(img, x0, y0, x1 - x0, y1 - y0); g.restore(); }
 const PXC = CHUNK * T;      // 1024 px de mundo por pedaço
 export const LOD_ZOOM = .12, HI_ZOOM = .4;
 const LOD = new Map(), LOD_MAX = 2500, lodPending = new Set(); let lodInflight = 0;
@@ -161,7 +164,7 @@ function drawLod(g, ox, oy, WW, WH) {
   const cx0 = fl(ox / PXC), cy0 = fl(oy / PXC), cx1 = fl((ox + WW) / PXC), cy1 = fl((oy + WH) / PXC), mid = [(cx0 + cx1) / 2, (cy0 + cy1) / 2], miss = [];
   if (CONT.overview) { g.imageSmoothingEnabled = true; g.drawImage(CONT.overview, (ox / T + TR.OX) / 10, (oy / T + TR.OY) / 10, WW / T / 10, WH / T / 10, ox, oy, WW, WH); }
   g.imageSmoothingEnabled = false; if (WW / PXC > 60) return;   // continente inteiro na tela: só o mapa-múndi
-  for (let cy = cy0; cy <= cy1; cy++) for (let cx = cx0; cx <= cx1; cx++) { const b = LOD.get(cx + "," + cy); if (b) g.drawImage(b, cx * PXC, cy * PXC, PXC + 1, PXC + 1); else miss.push([cx, cy]); }
+  for (let cy = cy0; cy <= cy1; cy++) for (let cx = cx0; cx <= cx1; cx++) { const b = LOD.get(cx + "," + cy); if (b) snapDraw(g, b, cx * PXC, cy * PXC, PXC, PXC); else miss.push([cx, cy]); }
   miss.sort((a, b) => Math.hypot(a[0] - mid[0], a[1] - mid[1]) - Math.hypot(b[0] - mid[0], b[1] - mid[1])); for (const [cx, cy] of miss) requestLod(cx, cy);
 }
 // desenha o chão do continente visível; o coração é desenhado por cima pelo art.js
@@ -176,11 +179,11 @@ export function drawContinent(g, ox, oy, WW, WH, t, zoom = 1) {
   for (const [cx, cy] of order) {
     if (cx * CHUNK >= 0 && cy * CHUNK >= 0 && (cx + 1) * CHUNK <= 300 && (cy + 1) * CHUNK <= 200) continue;   // inteiro dentro do coração
     const k = cx + "," + cy, c = M.get(k), x = cx * PXC, y = cy * PXC;
-    if (c) { M.delete(k); M.set(k, c); CONT.stats.hits++; g.drawImage(c, x, y, PXC + .5, PXC + .5); continue; }
+    if (c) { M.delete(k); M.set(k, c); CONT.stats.hits++; snapDraw(g, c, x, y, PXC, PXC); continue; }
     request(tier, cx, cy);
     // enquanto não chega: o outro nível, ou o 1 px/tile, ou o mapa-múndi
     const alt = (tier === "hi" ? L1.mid : L1.hi).get(k) || LOD.get(k);
-    if (alt) { g.imageSmoothingEnabled = alt.width < 64 ? false : true; g.drawImage(alt, x, y, PXC + .5, PXC + .5); g.imageSmoothingEnabled = false; }
+    if (alt) { g.imageSmoothingEnabled = alt.width < 64 ? false : true; snapDraw(g, alt, x, y, PXC, PXC); g.imageSmoothingEnabled = false; }
     else { requestLod(cx, cy); if (CONT.overview) { const s = CHUNK / 10; g.imageSmoothingEnabled = true; g.drawImage(CONT.overview, (cx * CHUNK + TR.OX) / 10, (cy * CHUNK + TR.OY) / 10, s, s, x, y, PXC + 1, PXC + 1); g.imageSmoothingEnabled = false; } }
   }
   // pré-carrega a volta

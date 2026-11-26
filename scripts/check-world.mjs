@@ -31,4 +31,8 @@ const out = process.argv[2]; if (out) { const rows = []; let s = 1; const rnd = 
   for (const c of net.cities) for (let k = 0; k < 66; k++) { const a = rnd() * 6.283, d = rnd() * (c.heart ? 700 : c.r[2] * 1.3), cx = c.heart ? 150 : c.x, cy = c.heart ? 100 : c.y; const x = Math.round(cx + Math.cos(a) * d), y = Math.round(cy + Math.sin(a) * d); const z = T.zoneAt(x, y); rows.push(`${x},${y},${z.ring},${z.city ? z.city.id : ""}`); }
   while (rows.length < 400) { const x = Math.round(-T.OX + rnd() * T.SIZE), y = Math.round(-T.OY + rnd() * 9900); const z = T.zoneAt(x, y); rows.push(`${x},${y},${z.ring},${z.city ? z.city.id : ""}`); }
   fs.writeFileSync(out, rows.slice(0, 400).join("\n") + "\n"); }
+// pontos de teste do servidor: terra firme no nível 2 e no nível 3 de Valen, os mais perto da cidade
+if (out) { const v = net.cities.find(c => c.id === "valen"), pick = t => { let best = null, bd = 1e18; for (let a = 0; a < 6.283; a += .05) for (let r = 80; r < 2500; r += 6) { const x = Math.round(v.x + Math.cos(a) * r), y = Math.round(v.y + Math.sin(a) * r); const z = T.zoneAt(x, y);
+    if (z.city && z.city.id === "valen" && z.ring === t && C.procWalk(x, y) && C.procWalk(x + 2, y) && T.zoneAt(x + 2, y).ring === t && r < bd) { bd = r; best = [x, y]; break; } } return best; };
+  const p2 = pick(2), p3 = pick(3); ok(!!p2 && !!p3, "pontos de teste nos níveis 2 e 3 de Valen"); fs.writeFileSync(out.replace("zone-points", "test-points"), `${p2[0]},${p2[1]},${p3[0]},${p3[1]}\n`); }
 process.exit(fail);

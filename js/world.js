@@ -233,7 +233,11 @@ function carveExits() {
 }
 // borda do coração: região e água de cada tile do contorno (o continente usa pra costurar sem emenda)
 export function heartEdge() {
-  const t = []; const push = (x, y) => t.push([x, y, tregion[idx(x, y)], unitsOfTile(x, y, U.water) >= 3 && unitsOfTile(x, y, U.bridge) < 3 ? 1 : 0, block[idx(x, y)] ? 1 : 0]);
+  // região de cada tile da borda = a que mais aparece numa faixa de 14 tiles pra dentro (o desenho das regiões não chega na última coluna)
+  const inward = (x, y) => { const cnt = new Map(), dx = x === 0 ? 1 : x === MW - 1 ? -1 : 0, dy = y === 0 ? 1 : y === MH - 1 ? -1 : 0;
+    for (let k = 0; k < 14; k++) for (let o = -3; o <= 3; o++) { const xx = Math.max(0, Math.min(MW - 1, x + dx * k + (dx ? 0 : o))), yy = Math.max(0, Math.min(MH - 1, y + dy * k + (dy ? 0 : o))); const r = tregion[idx(xx, yy)]; cnt.set(r, (cnt.get(r) || 0) + 1); }
+    let br = tregion[idx(x, y)], bc = 0; for (const [r, n] of cnt) if (n > bc) { bc = n; br = r; } return br; };
+  const t = []; const push = (x, y) => t.push([x, y, inward(x, y), unitsOfTile(x, y, U.water) >= 3 && unitsOfTile(x, y, U.bridge) < 3 ? 1 : 0, block[idx(x, y)] ? 1 : 0]);
   for (let x = 0; x < MW; x++) { push(x, 0); push(x, MH - 1); } for (let y = 1; y < MH - 1; y++) { push(0, y); push(MW - 1, y); }
   return { tiles: t, exits: EXITS, regions: REGION_ID };
 }

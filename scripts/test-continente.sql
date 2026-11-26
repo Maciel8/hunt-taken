@@ -6,6 +6,9 @@ select setseed(0.42);
 create temp table r(k text, v text) on commit drop; grant all on r to authenticated;
 create temp table zpts(x int, y int, ring int, city text) on commit drop;
 \copy zpts from 'tmp-zone-points.csv' csv
+create temp table tpts(x2 int, y2 int, x3 int, y3 int) on commit drop;
+\copy tpts from 'tmp-test-points.csv' csv
+select x2, y2, x3, y3 from tpts \gset
 select id as tid, user_id as tuid from characters where name = 'Testador' \gset
 select id as bid, user_id as buid from characters where name = 'Bielzin' \gset
 select set_config('t.bid', :'bid', false);
@@ -32,9 +35,9 @@ insert into r select 't02_teleporte_recusado', (report_position(:vx + 900, :vy) 
 -- 3. PvP não liga em zona segura
 do $$ begin perform pvp_toggle(true); insert into r values ('t03_pvp_em_seguro', 'LIGOU (erro)'); exception when others then insert into r values ('t03_pvp_em_seguro', sqlerrm); end $$;
 -- 4. anel 2: liga PvP
-reset role; select pg_temp.place(:'tid', :vx + 260, :vy); select pg_temp.place(:'bid', :vx + 263, :vy); update characters set pos_at = now() where id = :'bid';
+reset role; select pg_temp.place(:'tid', :x2, :y2); select pg_temp.place(:'bid', :x2 + 2, :y2); update characters set pos_at = now() where id = :'bid';
 set local role authenticated; select pg_temp.as_(:'tuid');
-insert into r select 't04_anel2', (report_position(:vx + 260, :vy) ->> 'ring');
+insert into r select 't04_anel2', (report_position(:x2, :y2) ->> 'ring');
 insert into r select 't04_pvp_ligado', (pvp_toggle(true) ->> 'pvp');
 -- 5. o outro com PvP desligado não pode ser atacado no anel 2
 do $$ begin perform pvp_resolve(current_setting('t.bid')::uuid); insert into r values ('t05_sem_consentimento', 'ATACOU (erro)'); exception when others then insert into r values ('t05_sem_consentimento', sqlerrm); end $$;
@@ -51,14 +54,14 @@ insert into r select 't06_gold_10pct', ((:'duel'::jsonb ->> 'gold')::bigint = 10
 insert into r select 't06_item_mudou', ((:'duel'::jsonb ->> 'won')::boolean is false or exists (select 1 from inventory v join items i on i.id = v.item_id where v.character_id = :'tid' and i.template_id = 'capa' and i.origin = 'teste'))::text;
 insert into r select 't06_log', (select count(*) from pvp_log where winner in (:'tid', :'bid'))::text;
 -- 7. recarga entre duelos
-update characters set pos_at = now(), x = :vx + 260, y = :vy, ring = 2, pvp_mode = true where id in (:'tid', :'bid');
+update characters set pos_at = now(), x = :x2, y = :y2, ring = 2, pvp_mode = true where id in (:'tid', :'bid');
 set local role authenticated; select pg_temp.as_(:'tuid');
 do $$ begin perform pvp_resolve(current_setting('t.bid')::uuid); insert into r values ('t07_recarga', 'ATACOU (erro)'); exception when others then insert into r values ('t07_recarga', sqlerrm); end $$;
 -- 8. desligar PvP logo depois de lutar: precisa de 60 s fora de combate
 do $$ begin perform pvp_toggle(false); insert into r values ('t08_desligar_em_combate', 'DESLIGOU (erro)'); exception when others then insert into r values ('t08_desligar_em_combate', sqlerrm); end $$;
 -- 9. mesma dupla logo em seguida: luta sem prêmio (anti-farm); anel 3 é PvP total mesmo com o outro desligado
 reset role; update pvp_log set at = at - interval '1 minute' where attacker = :'tid';
-select pg_temp.place(:'tid', :vx + 505, :vy); select pg_temp.place(:'bid', :vx + 507, :vy);
+select pg_temp.place(:'tid', :x3, :y3); select pg_temp.place(:'bid', :x3 + 2, :y3);
 update characters set pos_at = now(), pvp_mode = false where id = :'bid'; update characters set pos_at = now() where id = :'tid';
 set local role authenticated; select pg_temp.as_(:'tuid');
 select pvp_resolve(:'bid') as duel3 \gset
@@ -69,7 +72,7 @@ reset role;
 insert into clans(name, tag, leader) values ('Teste Continente', 'TCX', :'tid') returning id as clid \gset
 insert into clan_members(clan_id, character_id, role) values (:'clid', :'tid', 'lider'), (:'clid', :'bid', 'membro');
 update pvp_log set at = at - interval '1 hour' where attacker = :'tid';
-update characters set pos_at = now(), x = :vx + 505, y = :vy, ring = 3 where id in (:'tid', :'bid');
+update characters set pos_at = now(), x = :x3, y = :y3, ring = 3 where id in (:'tid', :'bid');
 set local role authenticated; select pg_temp.as_(:'tuid');
 do $$ begin perform pvp_resolve(current_setting('t.bid')::uuid); insert into r values ('t10_mesmo_cla', 'ATACOU (erro)'); exception when others then insert into r values ('t10_mesmo_cla', sqlerrm); end $$;
 -- 11. banco: só na cidade; depositar e sacar

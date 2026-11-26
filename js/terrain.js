@@ -13,8 +13,9 @@ export const isBlocked = b => BLOCKED[b] === 1;
 export const isWater = b => b === B.DEEP || b === B.OCEAN || b === B.SHALLOW || b === B.LAKE || b === B.RIVER || b === B.MURKY;
 export const BIOME_NAME = ["Oceano profundo", "Oceano", "Águas rasas", "Praia", "Costa rochosa", "Planícies Douradas", "Campos Férteis", "Floresta Densa", "Floresta Ancestral", "Pântano Vermelho", "Manguezal", "Deserto Dourado", "Cânions", "Cordilheira", "Picos", "Terras Vulcânicas", "Lava", "Tundra", "Geleiras", "Lago congelado", "Terras Sombrias", "Lago", "Rio", "Estrada", "Ponte", "Cidade", "Água turva", "Docas"];
 // cor média (minimapa e mapa-múndi)
-export const BIOME_RGB = [[18, 38, 74], [28, 62, 110], [52, 112, 150], [222, 204, 150], [120, 112, 104], [104, 150, 64], [150, 160, 70], [52, 100, 48], [40, 92, 70], [110, 60, 52], [70, 90, 60], [224, 190, 110], [186, 120, 80], [126, 120, 112], [90, 86, 84],
-  [70, 54, 54], [220, 90, 30], [210, 220, 226], [190, 214, 236], [170, 206, 230], [76, 58, 92], [48, 110, 160], [56, 120, 170], [150, 118, 78], [130, 94, 60], [180, 170, 150], [70, 74, 52], [120, 90, 60]];
+// cor média de cada bioma = média das mesmas texturas do jogo (com o tom do Worker); mapa-múndi e zoom distante batem com o perto
+export const BIOME_RGB = [[16, 34, 70], [26, 58, 106], [48, 110, 150], [229, 208, 158], [139, 139, 143], [94, 158, 52], [120, 159, 36], [38, 68, 37], [33, 66, 39], [101, 59, 50], [82, 128, 72], [229, 208, 158], [181, 136, 85], [100, 97, 100], [118, 118, 129],
+  [62, 53, 55], [181, 66, 20], [235, 240, 246], [212, 233, 255], [193, 221, 255], [81, 58, 107], [48, 112, 155], [48, 112, 155], [172, 131, 83], [128, 92, 51], [154, 138, 113], [57, 96, 40], [128, 92, 51]];
 
 // ---------- ruído ----------
 const ih = (x, y, s = SEED) => { let h = (x * 374761393 + y * 668265263 + s * 2147483647) | 0; h = Math.imul(h ^ (h >>> 13), 1274126177); h ^= h >>> 16; return (h >>> 0) / 4294967295; };
@@ -73,18 +74,18 @@ export function initNet(net) {
   Object.assign(NET, net, { ready: true, grid: new Map(), clear: null, clearBuilt: false });
   for (const r of NET.rivers) for (let i = 1; i < r.pts.length; i++) indexSeg("river", r.pts[i - 1], r.pts[i], r.w[i]);
   for (const r of NET.roads) for (let i = 1; i < r.pts.length; i++) indexSeg("road", r.pts[i - 1], r.pts[i], 1.25);
-  for (const c of NET.cities) indexSeg("city", [c.x, c.y], [c.x, c.y], c.plaza + 2, { city: c });
+  for (const c of NET.cities) if (!c.heart) indexSeg("city", [c.x, c.y], [c.x, c.y], Math.max(c.rx || c.plaza, c.ry || c.plaza) + 3, { city: c });
   for (const p of NET.ports || []) for (const d of p.docks) indexSeg("dock", d[0], d[1], 1.1);
   for (const l of NET.lakes || []) indexSeg("lake", [l.x, l.y], [l.x, l.y], l.r);
   if (NET.edge) { NET.edgeMap = new Map(); for (const t of NET.edge.tiles) NET.edgeMap.set(t[0] + "," + t[1], t); }
 }
 const segDist = (px, py, a, b) => { const dx = b[0] - a[0], dy = b[1] - a[1], L = dx * dx + dy * dy; let t = L ? ((px - a[0]) * dx + (py - a[1]) * dy) / L : 0; t = t < 0 ? 0 : t > 1 ? 1 : t; return Math.hypot(px - a[0] - t * dx, py - a[1] - t * dy); };
 // região do coração mais perto (costura sem emenda): biomas do coração → biomas do continente
-const HEART_BIOME = [B.PLAINS, B.FOREST, B.SWAMP, B.MOUNTAIN, B.MOUNTAIN, B.TUNDRA, B.DARK, B.PLAINS];
+const HEART_BIOME = [B.PLAINS, B.FOREST, B.SWAMP, B.CANYON, B.MOUNTAIN, B.TUNDRA, B.DARK, B.PLAINS];   // minas = terra (mesma textura do coração), serra = pedra escura
 function heartSeam(x, y) {
   if (!NET.edgeMap) return null;
   const qx = Math.max(0, Math.min(HEART.w - 1, x)), qy = Math.max(0, Math.min(HEART.h - 1, y)), d = Math.hypot(x - qx, y - qy);
-  if (d > 48) return null;
+  if (d > 110) return null;
   // amostra a borda com deslocamento por ruído ao longo dela (vira manchas, não faixas)
   const j = (fbm(x / 23, y / 23, 3, SEED + 43) - .5) * 70;
   const cx = (x < 0 || x >= HEART.w) ? (x < 0 ? 0 : HEART.w - 1) : Math.max(0, Math.min(HEART.w - 1, Math.round(qx + j)));
@@ -97,7 +98,7 @@ export function tileAt(x, y, ground = false) {
   if (x >= HEART.x && y >= HEART.y && x < HEART.x + HEART.w && y < HEART.y + HEART.h) return B.HEART;
   const gx = x + OX, gy = y + OY; let b = baseBiome(gx, gy);
   const seam = heartSeam(x, y);
-  if (seam && b !== B.DEEP && b !== B.OCEAN) { const k = seam.d / 48 + (fbm(gx / 18, gy / 18, 2, SEED + 29) - .5) * .5; if (k < .75) b = seam.b; }
+  if (seam && b !== B.DEEP && b !== B.OCEAN) { const k = seam.d / 110 + (fbm(gx / 18, gy / 18, 2, SEED + 29) - .5) * .5; if (k < .75) b = seam.b; }
   if (!NET.ready) return b;
   const cell = NET.grid.get(Math.floor(x / GCELL) + "," + Math.floor(y / GCELL));
   if (cell) {
@@ -107,7 +108,7 @@ export function tileAt(x, y, ground = false) {
       else if (s.kind === "road" && d < s.w) road = true;
       else if (s.kind === "dock" && d < s.w) dock = true;
       else if (s.kind === "lake" && d < s.w + (fbm(gx / 11, gy / 11, 2, SEED + 41) - .5) * 4) lake = true;
-      else if (s.kind === "city" && d < s.w - 2 + (fbm(gx / 7, gy / 7, 2, SEED + 37) - .5) * 2.5) city = s.city; }
+      else if (s.kind === "city" && cityInside(s.city, x + .5, y + .5) < 1.045) city = s.city; }
     if (dock) return B.DOCK;
     if (city) return B.CITY;
     if (lake && !road) return B.LAKE;
@@ -125,21 +126,25 @@ export function chunkTiles(cx, cy) { const n = CHUNK + 2, t = new Uint8Array(n *
 // ---------- anéis irregulares em volta das cidades ----------
 // raio(θ) = R × (1 + 0,16 sen(3θ+a) + 0,09 sen(5θ+b) + 0,05 sen(11θ+c)): mesma conta no servidor (ring_at)
 export function ringRadius(c, ring, th) { const p = c.ph[ring - 1], R = c.r[ring - 1]; return R * (1 + .16 * Math.sin(3 * th + p[0]) + .09 * Math.sin(5 * th + p[1]) + .05 * Math.sin(11 * th + p[2])); }
-export function cityDist(c, x, y) {
-  if (!c.heart) return Math.hypot(x - c.x, y - c.y);
-  const dx = Math.max(HEART.x - x, 0, x - (HEART.x + HEART.w)), dy = Math.max(HEART.y - y, 0, y - (HEART.y + HEART.h)); return Math.hypot(dx, dy);
-}
+// distância normalizada ao centro da cidade (elipse da muralha): < 1 dentro dos muros
+export function cityInside(c, x, y) { const rx = c.rx || c.plaza || 1, ry = c.ry || c.plaza || 1; return Math.hypot((x - c.x) / rx, (y - c.y) / ry); }
+// territórios geográficos (gerados em scripts/gen-world.mjs, iguais no servidor): cada célula de 16×16 tiles tem cidade e nível 1/2/3
+export const TIER_NAME = { 1: "Zona Segura", 2: "Fronteira Disputada — PvP Opcional", 3: "Zona Vermelha — PvP Liberado" };
+export function cellAt(x, y) { const t = NET.territory; if (!t) return null; const i = Math.floor((x + OX) / t.cell), j = Math.floor((y + OY) / t.cell); if (i < 0 || j < 0 || i >= t.w || j >= t.h) return null;
+  const ch = t.rows[j].charCodeAt(i) - 97; if (ch < 0 || ch > 40) return null; return { city: NET.cities[Math.floor(ch / 3)], ring: ch % 3 + 1 }; }
 export function zoneAt(x, y) {
-  let best = null; for (const c of NET.cities) { const d = cityDist(c, x, y), th = Math.atan2(y - (c.heart ? HEART.y + HEART.h / 2 : c.y), x - (c.heart ? HEART.x + HEART.w / 2 : c.x));
-    let ring = 4; for (let k = 1; k <= 3; k++) if (d < ringRadius(c, k, th)) { ring = k; break; }
-    const score = ring * 1e6 + d; if (!best || score < best.score) best = { city: c, ring, d, score }; }
-  return best || { city: null, ring: 4 };
+  if (x >= HEART.x && y >= HEART.y && x < HEART.x + HEART.w && y < HEART.y + HEART.h) return { city: NET.cities.find(c => c.heart) || null, ring: 1 };
+  const c = cellAt(x, y); if (c) return c;
+  // fora da grade (água): cidade mais perto, nível 3
+  let best = null, bd = 1e18; for (const ci of NET.cities) { const d = Math.hypot(x - (ci.heart ? 150 : ci.x), y - (ci.heart ? 100 : ci.y)); if (d < bd) { bd = d; best = ci; } }
+  return { city: best, ring: 3 };
 }
+export function regionName(z) { if (!z || !z.city) return "Mar aberto"; return (z.city.regions && z.city.regions[z.ring - 1]) || z.city.name; }
 
 // ---------- objetos de um pedaço (árvores, rochas, casas, marcos de anel) — determinístico ----------
 const TREE = { [B.FOREST]: [["pine", .11], ["oak", .07], ["tree_round", .05]], [B.ANCIENT]: [["oak", .13, "ancient", 1.4], ["willow", .05]], [B.PLAINS]: [["oak", .025], ["tree_round", .02]], [B.FIELD]: [["tree_round", .012]],
   [B.SWAMP]: [["willow", .08, "swamp"], ["dead", .06]], [B.MANGROVE]: [["willow", .14, "swamp"]], [B.DESERT]: [["palm", .008], ["cactus", .02]], [B.CANYON]: [["boulder", .04, "sand"]],
-  [B.MOUNTAIN]: [["boulder", .05], ["pine", .04, "snow"]], [B.VOLCANIC]: [["boulder", .035], ["dead", .025]], [B.TUNDRA]: [["pine", .07, "snow"], ["boulder", .02, "ice"]], [B.GLACIER]: [["boulder", .02, "ice"]],
+  [B.MOUNTAIN]: [["boulder", .05], ["pine", .04, "snow"]], [B.VOLCANIC]: [["boulder", .035], ["dead", .025]], [B.TUNDRA]: [["pine", .12, "snow"], ["boulder", .045, "ice"]], [B.GLACIER]: [["boulder", .02, "ice"]],
   [B.DARK]: [["dead", .07, "void"], ["ruinwall", .025]], [B.BEACH]: [["palm", .012]], [B.CLIFF]: [["boulder", .05]] };
 function clearAt(x, y) {
   if (!NET.ready) return false; const c = NET.clear || (NET.clear = new Map());
@@ -171,11 +176,8 @@ export function chunkObjects(cx, cy, tiles) {
   }
   // construções das cidades (geradas sobre o calçamento)
   if (NET.ready) for (const c of NET.cities) for (const o of c.buildings || []) if (Math.floor(o.x / CHUNK) === cx && Math.floor(o.y / CHUNK) === cy) out.push({ ...o, proc: true, solid: o.solid !== false });
-  // marcos de pedra nos limites dos anéis (a cada ~7°)
-  if (NET.ready) for (const c of NET.cities) { if (c.heart) continue; if (Math.abs(c.x - (cx + .5) * CHUNK) > c.r[2] * 1.5 + CHUNK || Math.abs(c.y - (cy + .5) * CHUNK) > c.r[2] * 1.5 + CHUNK) continue;
-    for (let k = 1; k <= 3; k++) for (let a = 0; a < 6.283; a += .12) { const R = ringRadius(c, k, a), x = Math.round(c.x + Math.cos(a) * R), y = Math.round(c.y + Math.sin(a) * R);
-      if (Math.floor(x / CHUNK) !== cx || Math.floor(y / CHUNK) !== cy) continue; const b = tiles[(y - cy * CHUNK + 1) * n + (x - cx * CHUNK + 1)]; if (isBlocked(b) || b === B.ROAD || b === B.BRIDGE || b === B.HEART) continue;
-      out.push({ x, y, kind: "ringmark", ring: k, solid: true, proc: true }); } }
+  // marcos de fronteira onde as estradas cruzam de um território pro outro (bandeiras âmbar no nível 2, monólitos vermelhos no 3)
+  if (NET.ready) for (const m of NET.markers || []) if (Math.floor(m.x / CHUNK) === cx && Math.floor(m.y / CHUNK) === cy) out.push({ ...m, solid: true, proc: true });
   return out;
 }
 export const chunkKey = (cx, cy) => cx + "," + cy;
