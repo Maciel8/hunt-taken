@@ -105,21 +105,45 @@ export const procZone = (x, y) => zoneKey(zoneInfo(x, y).ring);
 const DIRS = [[1, 0, 1], [-1, 0, 1], [0, 1, 1], [0, -1, 1], [1, 1, 1.4142], [1, -1, 1.4142], [-1, 1, 1.4142], [-1, -1, 1.4142]];
 class Heap { constructor() { this.a = []; } push(n, f) { const a = this.a; a.push([f, n]); let i = a.length - 1; while (i > 0) { const p = (i - 1) >> 1; if (a[p][0] <= a[i][0]) break; [a[p], a[i]] = [a[i], a[p]]; i = p; } } pop() { const a = this.a, top = a[0], last = a.pop(); if (a.length) { a[0] = last; let i = 0; for (;;) { const l = 2 * i + 1, r = l + 1; let m = i; if (l < a.length && a[l][0] < a[m][0]) m = l; if (r < a.length && a[r][0] < a[m][0]) m = r; if (m === i) break; [a[m], a[i]] = [a[i], a[m]]; i = m; } } return top[1]; } get size() { return this.a.length; } }
 // A* numa janela retangular em volta de origem e destino
-function astar(sx, sy, tx, ty, walk, isRoad, margin = 40, maxNodes = 90000) {
+function astar(sx, sy, tx, ty, walk, isRoad, margin = 40, maxNodes = 90000, hw = 1) {   // hw > 1: busca gulosa (acha rápido um caminho bom, não o mais curto)
   const x0 = Math.min(sx, tx) - margin, y0 = Math.min(sy, ty) - margin, W = Math.abs(tx - sx) + 2 * margin + 1, H = Math.abs(ty - sy) + 2 * margin + 1;
   if (W * H > 700000) return null;
-  const G = new Float32Array(W * H).fill(Infinity), P = new Int32Array(W * H).fill(-1), open = new Heap();
+  const G = new Float32Array(W * H).fill(Infinity), P = new Int32Array(W * H).fill(-1), WC = new Uint8Array(W * H), open = new Heap();
   const id = (x, y) => (y - y0) * W + (x - x0), s = id(sx, sy), goal = id(tx, ty);
+  const wk = (x, y) => { const k = id(x, y); let v = WC[k]; if (!v) { v = walk(x, y) ? 1 : 2; WC[k] = v; } return v !== 2; };   // cada tile consultado uma vez só (1 livre, 2 bloqueado, 3 livre e resolvido)
   const Hh = (x, y) => { const dx = Math.abs(x - tx), dy = Math.abs(y - ty); return Math.max(dx, dy) + .4142 * Math.min(dx, dy); };
   G[s] = 0; open.push(s, Hh(sx, sy)); let n = 0;
   while (open.size && n++ < maxNodes) {
-    const c = open.pop(); if (c === goal) break; const cx = c % W + x0, cy = ((c / W) | 0) + y0, gc = G[c];
-    for (const [dx, dy, w] of DIRS) { const nx = cx + dx, ny = cy + dy; if (nx < x0 || ny < y0 || nx >= x0 + W || ny >= y0 + H || !walk(nx, ny)) continue;
-      if (dx && dy && (!walk(cx + dx, cy) || !walk(cx, cy + dy))) continue;
-      const k = id(nx, ny), g2 = gc + w * (isRoad(nx, ny) ? .8 : 1); if (G[k] <= g2) continue; G[k] = g2; P[k] = c; open.push(k, g2 + Hh(nx, ny)); }
+    const c = open.pop(); if (c === goal) break; if (WC[c] === 3) continue; WC[c] = 3; const cx = c % W + x0, cy = ((c / W) | 0) + y0, gc = G[c];   // 3 = já resolvido
+    for (const [dx, dy, w] of DIRS) { const nx = cx + dx, ny = cy + dy; if (nx < x0 || ny < y0 || nx >= x0 + W || ny >= y0 + H || WC[id(nx, ny)] === 3 || !wk(nx, ny)) continue;
+      if (dx && dy && (!wk(cx + dx, cy) || !wk(cx, cy + dy))) continue;
+      const k = id(nx, ny), g2 = gc + w * (isRoad(nx, ny) ? .8 : 1); if (G[k] <= g2) continue; G[k] = g2; P[k] = c; open.push(k, g2 + hw * Hh(nx, ny)); }
   }
   if (G[goal] === Infinity) return null;
   const pts = []; for (let c = goal; c !== s && c !== -1; c = P[c]) pts.push({ x: c % W + x0, y: ((c / W) | 0) + y0 }); return pts.reverse();
+}
+// busca A* completa feita aos poucos (alguns ms por quadro): acha contornos de centenas de tiles sem travar a tela
+function pathJob(sx, sy, tx, ty, walk, isRoad, hw = 1.3) {
+  const span = Math.max(Math.abs(tx - sx), Math.abs(ty - sy)); let margin = Math.min(360, Math.max(80, span));
+  while (margin > 60 && (Math.abs(tx - sx) + 2 * margin + 1) * (Math.abs(ty - sy) + 2 * margin + 1) > 1400000) margin -= 20;
+  const x0 = Math.min(sx, tx) - margin, y0 = Math.min(sy, ty) - margin, W = Math.abs(tx - sx) + 2 * margin + 1, H = Math.abs(ty - sy) + 2 * margin + 1;
+  const G = new Float32Array(W * H), P = new Int32Array(W * H), done = new Uint8Array(W * H), WC = new Uint8Array(W * H), open = new Heap();   // G guarda custo+1 (0 = ainda não visto): sem preencher 1 milhão de posições
+  const id = (x, y) => (y - y0) * W + (x - x0), s0 = id(sx, sy), goal = id(tx, ty), Hh = (x, y) => { const dx = Math.abs(x - tx), dy = Math.abs(y - ty); return Math.max(dx, dy) + .4142 * Math.min(dx, dy); };
+  const wk = (x, y) => { const k = id(x, y); let v = WC[k]; if (!v) { v = walk(x, y) ? 1 : 2; WC[k] = v; } return v === 1; };
+  G[s0] = 1; P[s0] = -1; open.push(s0, Hh(sx, sy)); let n = 0;
+  return { step(ms) {
+    const t0 = performance.now();
+    while (open.size) {
+      if ((++n & 15) === 0 && performance.now() - t0 > ms) return null;   // continua no próximo quadro
+      if (n > 1500000) return "fail";
+      const c = open.pop(); if (c === goal) break; if (done[c]) continue; done[c] = 1; const cx = c % W + x0, cy = ((c / W) | 0) + y0, gc = G[c];
+      for (const [dx, dy, w] of DIRS) { const nx = cx + dx, ny = cy + dy; if (nx < x0 || ny < y0 || nx >= x0 + W || ny >= y0 + H) continue; const k = id(nx, ny); if (done[k] || !wk(nx, ny)) continue;
+        if (dx && dy && (!wk(cx + dx, cy) || !wk(cx, cy + dy))) continue;
+        const g2 = gc + w * (isRoad(nx, ny) ? .8 : 1); if (G[k] && G[k] <= g2) continue; G[k] = g2; P[k] = c; open.push(k, g2 + hw * Hh(nx, ny)); }
+    }
+    if (!G[goal]) return "fail";
+    const pts = []; for (let c = goal; c !== s0 && c !== -1; c = P[c]) pts.push({ x: c % W + x0, y: ((c / W) | 0) + y0 }); return pts.reverse();
+  } };
 }
 function lineOK(a, b, walk) { const d = Math.hypot(b.x - a.x, b.y - a.y), n = Math.ceil(d * 4); for (let i = 1; i <= n; i++) { const x = a.x + (b.x - a.x) * i / n, y = a.y + (b.y - a.y) * i / n; if (!walk(x + .5, y + .5) || !walk(x + .2, y + .5) || !walk(x + .8, y + .5) || !walk(x + .5, y + .2) || !walk(x + .5, y + .8)) return false; } return true; }
 function smooth(start, pts, walk) { if (pts.length < 3) return pts; const out = []; let a = start, i = 0; while (i < pts.length) { let j = Math.min(pts.length - 1, i + 24); while (j > i && !lineOK(a, pts[j], walk)) j--; out.push(pts[j]); a = pts[j]; i = j + 1; } return out; }
@@ -137,29 +161,37 @@ export function wpRouteFrom(sx, sy, b) {
 function nearestWp(x, y) { let best = -1, bd = Infinity; CONT.net.wp.nodes.forEach((p, i) => { const d = (p[0] - x) ** 2 + (p[1] - y) ** 2; if (d < bd) { bd = d; best = i; } }); return best; }
 export function findPathWide(sx, sy, tx, ty, walk, isRoad, heartPath) {
   const d = Math.hypot(tx - sx, ty - sy);
-  if (d <= 260 && d > 120 && CONT.ready) { const p = astar(sx, sy, tx, ty, walk, isRoad, 40, 60000); if (p) return smooth({ x: sx, y: sy }, p, walk); }
-  if (d <= 120 || !CONT.ready) { const p = astar(sx, sy, tx, ty, walk, isRoad, d < 30 ? 24 : 48); return p && smooth({ x: sx, y: sy }, p, walk); }
+  const planned = () => { if (!CONT.ready) return null; const out = []; Object.defineProperty(out, "rest", { value: { stops: [{ x: tx, y: ty, final: true }], cur: { x: sx, y: sy }, walk, isRoad, heartPath }, writable: true, enumerable: false });
+    for (let k = 0; k < 30 && !out.length && out.rest && !out.rest.job; k++) extendPath(out, 4, 40); return out.length || out.rest?.job ? out : null; };
+  if (d <= 260 && d > 120 && CONT.ready) { const p = astar(sx, sy, tx, ty, walk, isRoad, 40, 60000); if (p) return smooth({ x: sx, y: sy }, p, walk); return planned(); }
+  if (d <= 120 || !CONT.ready) { const p = astar(sx, sy, tx, ty, walk, isRoad, d < 30 ? 24 : 48); return (p && smooth({ x: sx, y: sy }, p, walk)) || planned(); }
   // rota longa: anda até a estrada mais perto, segue os pontos de estrada, sai da estrada perto do destino
   const b = nearestWp(tx, ty), r = wpRouteFrom(sx, sy, b);
   if (!r) { const p = astar(sx, sy, tx, ty, walk, isRoad, 60, 250000); return p && smooth({ x: sx, y: sy }, p, walk); }
-  const N = CONT.net.wp.nodes, stops = r.map(i => ({ x: N[i][0], y: N[i][1] })); stops.push({ x: tx, y: ty });
+  const N = CONT.net.wp.nodes, stops = r.map(i => ({ x: N[i][0], y: N[i][1] })); stops.push({ x: tx, y: ty, final: true });
   // calcula só os primeiros trechos; o resto é calculado enquanto anda (extendPath), sem travar a tela
   const out = []; Object.defineProperty(out, "rest", { value: { stops, cur: { x: sx, y: sy }, walk, isRoad, heartPath }, writable: true, enumerable: false });
-  extendPath(out, 4);
-  return out.length ? out : null;
+  for (let k = 0; k < 30 && !out.length && out.rest && !out.rest.job; k++) extendPath(out, 4, 40);   // garante o primeiro trecho pronto
+  return out.length || out.rest?.job ? out : null;
 }
 const inH = p => p.x >= 0 && p.y >= 0 && p.x < 300 && p.y < 200;
 // estende o caminho com os próximos trechos; teto de tempo por chamada (roda dentro do quadro)
 export function extendPath(path, n = 2, budgetMs = 12) {
-  const R = path.rest; if (!R) return; const t0 = performance.now();
+  const R = path.rest; if (!R) return; const t0 = performance.now(); R.log = R.log || [];
+  if (R.job) { const res = R.job.step(budgetMs); if (res === null) return;
+    R.job = null; /* sem alisar: caminho longo, alisar custaria caro */ if (res !== "fail") { for (const q of res) path.push(q); R.cur = R.jobTarget; } else { R.log.push(["sem caminho", R.jobTarget.x, R.jobTarget.y]); if (R.jobTarget.final) path.noRoute = true; }
+    if (!R.stops.length) path.rest = null; return; }
   for (let k = 0; k < n && R.stops.length && performance.now() - t0 < budgetMs; k++) {
     const st = R.stops.shift(); if (R.stops.length && !R.walk(st.x, st.y)) continue; const far = Math.hypot(st.x - R.cur.x, st.y - R.cur.y);
     let seg = null;
     if (R.heartPath && inH(R.cur) && inH(st)) seg = R.heartPath(R.cur.x, R.cur.y, st.x, st.y);
-    else { const raw = astar(Math.round(R.cur.x), Math.round(R.cur.y), st.x, st.y, R.walk, R.isRoad, far > 60 ? 32 : 10, far > 60 ? 40000 : 6000); seg = raw && smooth(R.cur, raw, R.walk); }
-    if (!seg) continue; path.push(...seg); R.cur = st;
+    // trecho curto: tenta na hora (barato); trecho longo ou difícil vai pra busca aos poucos (terreno novo custa caro)
+    else if (far <= 60) { const raw = astar(Math.round(R.cur.x), Math.round(R.cur.y), st.x, st.y, R.walk, R.isRoad, 12, 5000, 1.6); seg = raw && smooth(R.cur, raw, R.walk); }
+    // trecho difícil (serra, lago, mata fechada): busca completa aos poucos; o personagem espera no lugar até ficar pronta
+    if (!seg) { R.job = pathJob(Math.round(R.cur.x), Math.round(R.cur.y), st.x, st.y, R.walk, R.isRoad); R.jobTarget = st; return; }
+    path.push(...seg); R.cur = st;
   }
-  if (!R.stops.length) path.rest = null;
+  if (!R.stops.length && !R.job) path.rest = null;
 }
 
 // ---------- chão (Worker + caches) ----------

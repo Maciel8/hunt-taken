@@ -172,12 +172,12 @@ export function playerTick() {
   p.lastHunt = huntAt(p.x, p.y)?.id || null;
   if (p.task === "idle" || p.task === "gather") return;
   // andar manual: chegou numa área de caça, começa a caçar ali; fora dela, para
-  if (p.task === "walk") { if (!p.path.length && p.pendingDoor) { const d = p.pendingDoor; p.pendingDoor = null; p.task = "idle"; emit("door", d); return; } if (!p.path.length && !p.manual) { const h = huntAt(p.x, p.y); if (h) { p.huntId = h.id; p.task = "hunt"; emit("arrive", h.id); log(`Chegou em ${h.name}.`); } else { p.task = "idle"; emit("ui"); } } return; }
+  if (p.task === "walk") { if (!p.path.length && p.pendingDoor) { const d = p.pendingDoor; p.pendingDoor = null; p.task = "idle"; emit("door", d); return; } if (!p.path.length && !p.path.rest && !p.manual) { const h = huntAt(p.x, p.y); if (h) { p.huntId = h.id; p.task = "hunt"; emit("arrive", h.id); log(`Chegou em ${h.name}.`); } else { p.task = "idle"; emit("ui"); } } return; }
   const hh = p.huntId && findHunt(p.huntId);
   if (!hh) { p.task = "idle"; return; }
   if (p.task === "goto") {
     if (huntAt(p.x, p.y)?.id === hh.id && dist(p, { x: hh.cx, y: hh.cy }) < hh.r * .8) { p.task = "hunt"; p.path = []; log(`Chegou em ${hh.name}.`); if (S.server && S.session?.hunt_id !== hh.id) emit("arrive", hh.id); emit("ui"); return; }
-    if (!p.path.length) {
+    if (!p.path.length && !p.path.rest) {   // (rota longa ainda sendo calculada: espera)
       // não desiste: tenta outros pontos da área, desencosta de parede e tenta de novo a cada 2 s
       if (p.gotoWait && performance.now() < p.gotoWait) return;
       const d = freeTile({ ...hh, r: hh.r * .5 });

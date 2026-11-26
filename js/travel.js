@@ -73,6 +73,11 @@ export function cancelRoute() { ROUTE.on = false; ROUTE.stops = []; }
 // a cada quadro: tira os pontos que já ficaram pra trás e encerra ao chegar
 export function routeTick() {
   if (!ROUTE.on || !S.p) return; const p = S.p;
+  // a rota real vai sendo calculada enquanto anda: a linha acompanha o caminho de verdade (e avisa enquanto calcula)
+  if (p.path && (p.path.length || p.path.rest)) { const R = p.path.rest; ROUTE.stops = [...p.path.map(q => [q.x, q.y]), ...((R && R.stops) || []).map(s => [s.x, s.y]), ...(R && R.job ? [[R.jobTarget.x, R.jobTarget.y]] : [])]; ROUTE.busy = !!(R && R.job); }
+  // não existe caminho a pé (área cercada por serra/água): para, avisa e sugere a viagem rápida
+  if (p.path && p.path.noRoute && !p.path.length) { ROUTE.on = false; p.path = []; p.task = "idle"; p.huntId = null; toastUi(`Não há caminho a pé até ${ROUTE.label} (área cercada por serra ou água). Use a viagem rápida (${TRAVEL_GEMS} 💎).`, true); return; }
+  if (ROUTE.busy && !ROUTE.busyWarned) { ROUTE.busyWarned = true; toastUi("Calculando o caminho pela mata (contornando serras e lagos)…"); }
   while (ROUTE.stops.length > 1 && Math.hypot(ROUTE.stops[0][0] - p.x, ROUTE.stops[0][1] - p.y) < 5) ROUTE.stops.shift();
   // andando com WASD pode pular trechos: avança até o ponto mais perto dos próximos
   let best = 0, bd = Infinity; for (let i = 0; i < Math.min(ROUTE.stops.length, 30); i++) { const d = Math.hypot(ROUTE.stops[i][0] - p.x, ROUTE.stops[i][1] - p.y); if (d < bd) { bd = d; best = i; } }
