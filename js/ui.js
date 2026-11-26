@@ -23,6 +23,7 @@ let toastTimer;
 export function toast(msg, bad) { const el = $("toast"); el.textContent = msg; el.className = "toast show" + (bad ? " bad" : ""); clearTimeout(toastTimer); toastTimer = setTimeout(() => el.className = "toast", 2600); }
 const icon = name => A.sp[name] ? `<img class="ic" src="assets/sprites/${name}.png" alt="">` : `<span class="ic ph"></span>`;
 const tpl = id => ITEMS[id] || { name: id, icon: "orb" };
+const esc2 = t => String(t ?? "").replace(/[&<>"']/g, c => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]));
 const itemLabel = it => `${tpl(it.template).name}${it.rarity ? " (" + RARITY[it.rarity].name + ")" : ""}`;
 const rollTxt = it => Object.entries(it.roll || {}).map(([k, v]) => `+${v} ${k}`).join(" ");
 const POP = { abundante: ["Abundante", "var(--mint)"], pressionada: ["Pressionada", "var(--gold)"], escassa: ["Escassa", "#ff9a5a"], colapso: ["Colapso", "var(--red)"] };
@@ -34,7 +35,7 @@ export async function act(fn, okMsg) {
   catch (e) { toast(e.message || "erro", true); return null; }
 }
 
-export function renderAll() { if (!S.p) return; applyWorld(); renderQuestbar(); renderProfile(); renderField(); renderEquip(); renderHunt(); renderBehavior(); renderFeed(); renderEvent(); if (openTab && !["map", "equip", "quests", "clan", "trades", "market", "char", "profs", "workshop", "bestiary", "wallet"].includes(openTab)) renderTab(openTab); if (openTab === "workshop") refreshJobs(); const cb = document.querySelector("[data-tab=char]"); if (cb) cb.classList.toggle("ping", (S.pointsFree || 0) > 0 || (P().lvl >= 5 && (!P().classId || P().classId === "aventureiro"))); }
+export function renderAll() { if (!S.p) return; applyWorld(); renderQuestbar(); renderProfile(); renderField(); renderEquip(); renderHunt(); renderBehavior(); renderFeed(); renderEvent(); if (openTab && !["map", "equip", "quests", "clan", "trades", "market", "char", "profs", "workshop", "bestiary", "wallet", "shop"].includes(openTab)) renderTab(openTab); if (openTab === "workshop") refreshJobs(); const cb = document.querySelector("[data-tab=char]"); if (cb) cb.classList.toggle("ping", (S.pointsFree || 0) > 0 || (P().lvl >= 5 && (!P().classId || P().classId === "aventureiro"))); }
 
 function renderProfile() {
   const p = P(); const a = p.expCur ?? expFor(p.lvl), b = p.expNext ?? expFor(p.lvl + 1);
@@ -101,6 +102,7 @@ async function renderTab(tab) {
     const cvm = $("worldMap");
     cvm.addEventListener("click", ev => { const r = cvm.getBoundingClientRect(), x = (ev.clientX - r.left) / r.width * 1200, y = (ev.clientY - r.top) / r.height * 800; let best = null, bd = 30; for (const h of HUNTS) { const d = Math.hypot(h.cx * 4 - x, h.cy * 4 - y); if (d < bd) { bd = d; best = h; } } if (best) { sel = { region: best.region, hunt: best.id }; drawWorldMap(); showAnalyser(best.id); } else { const reg = regionAtDesign(x, y); sel = { region: reg, hunt: null }; drawWorldMap(); showRegion(reg); } });
     animMap();
+  } else if (tab === "shop") { /* a loja desenha a si mesma (shops.js) */
   } else if (tab === "market") { renderMarket(box);
   } else if (tab === "wallet") { renderWallet(box);
   } else if (tab === "market_old") {
@@ -191,9 +193,9 @@ function charImg(p) { return `<canvas class="dollc" width="72" height="104" data
 export function showItemCard(id) {
   const it = S.inventory.find(i => i.id === id); const el = $("itemCard"); if (!it || !el) return; const d = tpl(it.template), p = P(), can = d.slot && (!d.voc || d.voc.includes(p.voc) || d.props?.wtype);
   const R = RARITY[it.rarity];
-  el.innerHTML = `<div class="ic-head"><div class="slotv r${it.rarity}">${icon(d.icon)}</div><div><b style="color:${R.color}">${it.roll?.name || d.name}</b><small>${R.name}${d.slot ? " · " + (SLOTN[d.slot] || d.slot) : d.mat ? " · material" : ""}</small></div></div>
+  el.innerHTML = `<div class="ic-head"><div class="slotv r${it.rarity}">${icon(d.icon)}</div><div><b style="color:${R.color}">${esc2(it.roll?.custom_name || it.roll?.name || d.name)}</b>${it.roll?.custom_name ? `<small>${esc2(it.roll.name)}</small>` : ""}<small>${R.name}${d.slot ? " · " + (SLOTN[d.slot] || d.slot) : d.mat ? " · material" : ""}</small></div></div>
     ${d.atk ? `<div class="row"><span>Ataque</span><b>${d.atk}${it.roll?.atk ? " +" + it.roll.atk : ""}</b></div>` : ""}${d.def ? `<div class="row"><span>Defesa</span><b>${d.def}${it.roll?.def ? " +" + it.roll.def : ""}</b></div>` : ""}${it.roll?.skill ? `<div class="row"><span>Skill</span><b>+${it.roll.skill}</b></div>` : ""}${d.voc ? `<div class="row"><span>Vocação</span><b>${d.voc.map(v => VOC[v].name).join(", ")}</b></div>` : ""}<div class="row"><span>NPC paga</span><b style="color:var(--gold)">${fmt(it.value)}</b></div>
-    ${craftedLines(it)}<div class="actions">${craftedActions(it)}${it.container === "equip" ? `<button data-uneq="${d.slot}">Tirar</button>` : `${can ? `<button class="primary" data-eq="${it.id}">Equipar</button>` : ""}<button data-prot="${it.id}" data-on="${it.container === "protected" ? 0 : 1}">${it.container === "protected" ? "Desproteger" : "Proteger"}</button><button data-sell="${it.id}">Vender ${fmt(it.value)}</button>${d.slot ? `<button data-list="${it.id}" data-fair="${it.value * 3}">Anunciar</button>` : ""}`}</div>`;
+    ${craftedLines(it)}${it.roll?.realm ? `<div class="row"><small>Fabricado em</small><small>${esc2(it.roll.realm)}</small></div>` : ""}<div class="actions">${craftedActions(it)}${it.roll?.maker && !it.roll?.custom_name && ((it.roll.quality || 0) >= 80 || it.rarity >= 4) ? `<input id="rnName" maxlength="28" placeholder="nome do equipamento" style="width:150px"><button data-rename="${it.id}">Dar nome</button>` : ""}${it.container === "equip" ? `<button data-uneq="${d.slot}">Tirar</button>` : `${can ? `<button class="primary" data-eq="${it.id}">Equipar</button>` : ""}<button data-prot="${it.id}" data-on="${it.container === "protected" ? 0 : 1}">${it.container === "protected" ? "Desproteger" : "Proteger"}</button><button data-sell="${it.id}">Vender ${fmt(it.value)}</button>${d.slot ? `<button data-list="${it.id}" data-fair="${it.value * 3}">Anunciar</button>` : ""}`}</div>`;
 }
 function showAnalyser(id) {
   const p = P(), hh = HUNTS.find(x => x.id === id), i = huntInfo(hh, p), occ = occupantsOf(id), d = i.m.drop, hs = huntStateOf(id), te = territoryOf(id), ev = S.events.find(e => e.hunt_id === id);
@@ -218,6 +220,7 @@ export function bindUI() {
     const sk = e.target.closest(".slotv[data-stack]"); if (sk) { $("modalBody").querySelectorAll(".slotv.sel").forEach(x => x.classList.remove("sel")); sk.classList.add("sel"); $("itemCard").innerHTML = stackCard(sk.dataset.stack); return; }
     const sb2 = e.target.closest("button[data-sellstack]"); if (sb2) { const [t, pur] = sb2.dataset.sellstack.split("|"); return act(() => api.sellStack(t, +pur, +($("sellQ")?.value || 1)).then(x => { toast(`+${x.gold} gold`); return x.state; })).then(() => renderTab("equip")); }
     const ia = e.target.closest("button[data-ia]"); if (ia) { await itemActionClick(ia); return renderTab("equip"); }
+    const rn = e.target.closest("button[data-rename]"); if (rn) { const nm = ($("rnName")?.value || "").trim(); if (!nm) return toast("Escreva o nome no campo ao lado.", true); return act(() => api.renameItem(rn.dataset.rename, nm), "Nome gravado").then(() => renderTab("equip")); }
     const sl = e.target.closest(".slotv[data-item]"); if (sl) { $("modalBody").querySelectorAll(".slotv.sel").forEach(x => x.classList.remove("sel")); sl.classList.add("sel"); return showItemCard(sl.dataset.item); }
     const b = e.target.closest("button"); if (!b || b.disabled) return;
     if (b.dataset.go) { if (P().huntId === b.dataset.go) return closeModal(); closeModal(); const st = await act(() => api.startHunt(b.dataset.go)); if (st) { goHunt(b.dataset.go); } return; }
@@ -270,7 +273,7 @@ export function showCreate(onDone) {
 export function showReports(reports) {
   if (!reports.length) return;
   const sum = k => reports.reduce((a, r) => a + Number(r[k] || 0), 0), hours = reports.reduce((a, r) => a + (new Date(r.to_at) - new Date(r.from_at)) / 3600000, 0), drops = reports.reduce((a, r) => a.concat(r.drops || []), []), events = reports.reduce((a, r) => a.concat(r.events || []), []);
-  $("repSub").textContent = `${hours < 1 ? Math.round(hours * 60) + " min" : hours.toFixed(1) + " h"} caçando enquanto você estava fora`;
+  document.querySelector("#report h3").textContent = "Relatório de volta"; $("repSub").textContent = `${hours < 1 ? Math.round(hours * 60) + " min" : hours.toFixed(1) + " h"} caçando enquanto você estava fora`;
   $("repGrid").innerHTML = [["Exp", "+" + fmt(sum("exp"))], ["Gold", "+" + fmt(sum("gold_in"))], ["Abates", fmt(sum("kills"))], ["Drops raros", drops.length], ["Mortes", sum("deaths")], ["Poções", "-" + sum("pots")]].map(([a, b]) => `<div><b>${b}</b><small>${a}</small></div>`).join("");
   $("repNotes").innerHTML = (events.length ? events.slice(-5).map(e => `<div>• ${e}</div>`).join("") : "Sem incidentes.") + (drops.length ? `<div>Drops: ${drops.map(d => tpl(d.template).name).join(", ")}</div>` : "");
   $("report").hidden = false;

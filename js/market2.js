@@ -17,8 +17,8 @@ const CATN = { arma: "Armas forjadas", armadura: "Armaduras", acessorio: "Anéis
 let M = { data: null, sub: "buy", f: { cat: "", rar: 0, tier: 0, pur: 0, ench: "", cur: "" } };
 
 export async function renderMarket(box, sub) {
-  if (sub) M.sub = sub;
-  box.innerHTML = `<div class="tabs2">${[["buy", "Comprar"], ["orders", "Ordens de compra"], ["sell", "Vender"], ["mine", "Meus"], ["npc", "Loja NPC"]].map(([k, n]) => `<button data-msub="${k}" class="${M.sub === k ? "on" : ""}">${n}</button>`).join("")}</div><div id="msub"><div class="muted">carregando…</div></div>`;
+  if (sub) M.sub = sub; if (M.sub === "npc") M.sub = "buy";
+  box.innerHTML = `<div class="tabs2">${[["buy", "Comprar"], ["orders", "Ordens de compra"], ["sell", "Vender"], ["mine", "Meus"]].map(([k, n]) => `<button data-msub="${k}" class="${M.sub === k ? "on" : ""}">${n}</button>`).join("")}</div><div id="msub"><div class="muted">carregando…</div></div>`;
   box.querySelectorAll("[data-msub]").forEach(b => b.onclick = () => renderMarket(box, b.dataset.msub));
   try { M.data = await api.market2(); api.marketSeen().catch(() => { }); S.marketNews = 0; } catch (e) { $("msub").innerHTML = esc(e.message); return; }
   const el = $("msub");

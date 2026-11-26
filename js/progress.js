@@ -75,16 +75,16 @@ export function refreshJobs() {
   const el = document.getElementById("jobs"); if (!el) return; const now = Date.now();
   el.querySelectorAll("[data-collect]").forEach(b => { const j = S.craftJobs.find(x => x.id === b.dataset.collect); if (!j) return; const left = Math.max(0, (new Date(j.ready_at) - now) / 1000); b.disabled = left > 0; const sm = b.parentElement.querySelector("small"); if (sm) sm.textContent = left > 0 ? Math.ceil(left) + " s" : "pronto"; });
 }
-export function renderWorkshop(box) {
+export function renderWorkshop(box, only) {
   const lvl = id => S.profs.find(p => p.id === id)?.level || 1;
-  const groups = {}; for (const r of CAT.recipes) (groups[r.profession_id] = groups[r.profession_id] || []).push(r);
+  const groups = {}; for (const r of CAT.recipes) { if (r.kind === "modular" || (only && !only.includes(r.profession_id))) continue; (groups[r.profession_id] = groups[r.profession_id] || []).push(r); }
   const pname = id => S.profs.find(p => p.id === id)?.name || id;
   const have = t => S.stacks.filter(s => s.t === t).reduce((a, s) => a + s.qty, 0);
   const now = Date.now();
   box.innerHTML = `<div class="shop"><div class="rlist">${Object.entries(groups).map(([pid, rs]) => `<h4>${esc(pname(pid))} <small class="muted">nível ${lvl(pid)}</small></h4>${rs.sort((a, b) => a.req_level - b.req_level).map(r => `<button class="recipe ${selRecipe === r.id ? "sel" : ""} ${lvl(pid) < r.req_level ? "locked" : ""}" data-rc="${r.id}"><b>${esc(r.name)}</b><small>nível ${r.req_level} · ${r.seconds} s${r.gold_cost ? " · " + r.gold_cost + " gold" : ""}</small></button>`).join("")}`).join("")}</div>
     <div><div id="rcDetail" class="itemcard"><div class="muted">Escolha uma receita.</div></div><h4>Trabalhos (${S.craftJobs.length}/3)</h4><div id="jobs">${S.craftJobs.map(j => { const left = Math.max(0, (new Date(j.ready_at) - now) / 1000); const r = CAT.recipes.find(x => x.id === j.recipe_id); return `<div class="job"><span><b>${esc(r?.name || j.recipe_id)}</b>${j.qty > 1 ? " ×" + j.qty : ""}<small>${left > 0 ? Math.ceil(left) + " s" : "pronto"}</small></span><button ${left > 0 ? "disabled" : ""} class="primary" data-collect="${j.id}">Coletar</button></div>`; }).join("") || '<p class="muted">Nada em andamento.</p>'}</div></div></div>`;
-  box.querySelectorAll("[data-rc]").forEach(b => b.onclick = () => { selRecipe = b.dataset.rc; renderWorkshop(box); });
-  box.querySelectorAll("[data-collect]").forEach(b => b.onclick = async () => { try { const r = await api.craftFinish(b.dataset.collect); if (r.state) (await import("./sim.js")).applyServer(r.state); showCraftResult(r); } catch (e) { toast(e.message, true); } renderWorkshop(box); });
+  box.querySelectorAll("[data-rc]").forEach(b => b.onclick = () => { selRecipe = b.dataset.rc; renderWorkshop(box, only); });
+  box.querySelectorAll("[data-collect]").forEach(b => b.onclick = async () => { try { const r = await api.craftFinish(b.dataset.collect); if (r.state) (await import("./sim.js")).applyServer(r.state); showCraftResult(r); } catch (e) { toast(e.message, true); } renderWorkshop(box, only); });
   if (!selRecipe) return;
   const r = CAT.recipes.find(x => x.id === selRecipe); if (!r) return;
   const det = $("rcDetail"), techs = { segura: "Segura: barata, pureza sobe pouco, quase nunca falha", padrao: "Padrão: custa mais, pureza sobe bem", arriscada: "Arriscada: cara, pode subir muito a pureza, falha mais (devolve metade)" };
@@ -97,7 +97,7 @@ export function renderWorkshop(box) {
   det.innerHTML = `<h4>${esc(r.name)}</h4><p class="muted">${esc(r.description || "")}</p>${inputs}<div class="row"><span>Resultado</span><b>${esc(out)}</b></div>${r.techniques ? `<label class="auto"><span>Técnica</span><select id="rcTech">${Object.entries(techs).map(([k, v]) => `<option value="${k}">${v}</option>`).join("")}</select></label>` : ""}${["refino", "consumivel"].includes(r.kind) ? `<label class="auto"><span>Quantidade</span><input id="rcQty" type="number" min="1" max="20" value="1"></label>` : ""}<div class="actions"><button class="primary" id="rcGo" ${lvl(r.profession_id) < r.req_level ? "disabled" : ""}>${lvl(r.profession_id) < r.req_level ? "Precisa de nível " + r.req_level : "Começar"}</button></div>`;
   $("rcGo").onclick = () => {
     const choices = r.inputs.map((inp, k) => inp.cat ? { t: det.querySelector(`[data-ch="${k}"]`)?.value } : inp.part ? { item: det.querySelector(`[data-part="${k}"]`)?.value } : {});
-    act(() => api.craftStart(r.id, $("rcTech")?.value || "segura", +($("rcQty")?.value || 1), choices).then(x => x.state || x), "Trabalho começou").then(() => renderWorkshop(box));
+    act(() => api.craftStart(r.id, $("rcTech")?.value || "segura", +($("rcQty")?.value || 1), choices).then(x => x.state || x), "Trabalho começou").then(() => renderWorkshop(box, only));
   };
 }
 function showCraftResult(r) {

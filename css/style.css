@@ -217,3 +217,14 @@ body[data-palette=spirit] canvas#view{filter:hue-rotate(55deg) saturate(.75) bri
 #occupants{max-height:66px;overflow-y:auto}
 .panel.collapsible h2{cursor:pointer;user-select:none;display:flex;justify-content:space-between;align-items:center}.panel.collapsible h2::after{content:"▾";font-size:11px;color:var(--muted)}
 .panel.collapsible.collapsed h2::after{content:"▸"}.panel.collapsible.collapsed > :not(h2){display:none}
+
+/* lojas, forja e processamento */
+.forge{display:grid;grid-template-columns:200px 1fr;gap:12px}.ftypes{display:grid;gap:5px;align-content:start;max-height:60vh;overflow:auto}
+.fslot select{max-width:62%;background:var(--panel2);color:var(--fg);border:1px solid var(--line);border-radius:6px;padding:4px;font:700 12px var(--ui)}
+.fprev{background:var(--panel2);border:1px solid var(--line);border-radius:10px;padding:8px 10px;margin-top:8px}.fprev h4{margin:0 0 4px}
+.pos{color:#7ee07e!important}.neg{color:#ff7a6a!important}
+.qbtns{display:flex;flex-wrap:wrap;gap:5px;align-items:center}.qbtns input{width:90px;background:var(--panel2);color:var(--fg);border:1px solid var(--line);border-radius:6px;padding:4px}
+.probs{display:grid;grid-template-columns:repeat(auto-fill,minmax(220px,1fr));gap:0 14px;background:var(--panel2);border-radius:10px;padding:6px 10px}
+.repmat{padding:2px 0;font-weight:800}.repmat.rare{text-shadow:0 0 8px currentColor;font-size:14px}
+.pkg.locked{opacity:.5}
+@media (max-width:760px){.forge{grid-template-columns:1fr}}

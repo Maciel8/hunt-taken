@@ -167,7 +167,8 @@ const GREET = { Taverneiro: "Senta aí. Aqui se ouve de tudo, até sobre o drag�
 export async function npcDialog(npc) {
   if (!QUESTS.length) await loadQuests();
   const list = questsFor(npc.title), el = $("npcBox");
-  el.innerHTML = `<div class="npc-head"><canvas id="npcFace" width="72" height="104"></canvas><div><h3>${npc.title}</h3><p>${GREET[npc.title] || ""}</p></div></div>${list.length ? `<div class="talkopts">${list.map(d => { const stt = qp(d.id)?.status; return `<button class="reply main" data-talkq="${d.id}">» ${stt === "pronta" ? "Terminei: " : stt === "ativa" ? "Sobre: " : "Tem trabalho? "}${esc(d.title)}</button>`; }).join("")}</div>` : `<p class="muted">Nada pra você agora.</p>`}<div class="actions">${npc.tab && npc.tab !== "bless" ? `<button data-open="${npc.tab}">${npc.tab === "market" ? "Abrir loja" : "Abrir mochila"}</button>` : ""}${npc.tab === "bless" ? `<button data-bless="1">Comprar bênção (200)</button>` : ""}<button data-close-npc="1">Até logo</button></div>`;
+  if (!list.length && npc.shop) return import("./shops.js").then(m => m.openShop(npc.shop));
+  el.innerHTML = `<div class="npc-head"><canvas id="npcFace" width="72" height="104"></canvas><div><h3>${npc.title}</h3><p>${GREET[npc.title] || ""}</p></div></div>${list.length ? `<div class="talkopts">${list.map(d => { const stt = qp(d.id)?.status; return `<button class="reply main" data-talkq="${d.id}">» ${stt === "pronta" ? "Terminei: " : stt === "ativa" ? "Sobre: " : "Tem trabalho? "}${esc(d.title)}</button>`; }).join("")}</div>` : `<p class="muted">Nada pra você agora.</p>`}<div class="actions">${npc.shop ? `<button class="primary" data-shop="${npc.shop}">Abrir ${npc.shop === "armazem" ? "armazém" : npc.shop === "market" ? "Market" : "loja"}</button>` : ""}${npc.tab === "bless" ? `<button data-bless="1">Comprar bênção (200)</button>` : ""}<button data-close-npc="1">Até logo</button></div>`;
   $("npcModal").hidden = false;
   import("./chars.js").then(m => { const c = $("npcFace"), g = c.getContext("2d"); g.imageSmoothingEnabled = false; g.drawImage(m.charSprite(npc.voc, npc.king, "down", -1, 3), 0, 0, 72, 104); });
 }
@@ -176,6 +177,7 @@ export function bindNpc() {
     if (e.target === $("npcModal")) return ($("npcModal").hidden = true);
     const b = e.target.closest("button"); if (!b) return;
     if (b.dataset.closeNpc) $("npcModal").hidden = true;
+    if (b.dataset.shop) { $("npcModal").hidden = true; return import("./shops.js").then(m => m.openShop(b.dataset.shop)); }
     if (b.dataset.open) { $("npcModal").hidden = true; openModal(b.dataset.open); }
     if (b.dataset.bless) { $("npcModal").hidden = true; act(() => api.buyBless(), "Bênção comprada"); }
     if (b.dataset.talkq) return talkById(b.dataset.talkq);

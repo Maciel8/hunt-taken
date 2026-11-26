@@ -293,16 +293,27 @@ function smooth(start, pts) {
 
 // NPCs da vila: identificados como NPC (rótulo dourado), nunca entram em lista de jogadores
 export const NPCS = [
-  { x: 59, y: 39, voc: "banqueiro", title: "Banqueiro", tab: "equip", king: "grey" },
-  { x: 49, y: 43, voc: "mercador", title: "Mercador", tab: "market", king: "ash" },
+  { x: 59, y: 39, voc: "banqueiro", title: "Banqueiro", shop: "armazem", king: "grey" },
+  { x: 49, y: 43, voc: "mercador", title: "Mercador", shop: "mercador", king: "ash" },
   { x: 53, y: 33, voc: "sacerdote", title: "Sacerdote", tab: "bless", king: "grey" },
-  { x: 46, y: 38, voc: "ferreiro", title: "Ferreiro", tab: "market", king: "thorn" },
+  { x: 46, y: 38, voc: "ferreiro", title: "Ferreiro", shop: "ferreiro", king: "thorn" },
   { x: 70, y: 35, voc: "guarda", title: "Guarda", king: "grey" },
   { x: 52, y: 47, voc: "guarda", title: "Guarda", king: "grey" },
   { x: 12, y: 215, voc: "mercador", title: "Taverneiro", king: "ash", tab: "market" },
   { x: 48, y: 217, voc: "guarda", title: "Comandante", king: "grey" },
   { x: 74, y: 217, voc: "druid", title: "Fazendeira", king: "thorn" },
   { x: 35, y: 35, voc: "guarda", title: "Guarda", king: "grey" },
+  // área comercial: cada estabelecimento com seu NPC
+  { x: 62, y: 40, voc: "ferreiro", title: "Metalurgista", shop: "metalurgica", king: "ash" },
+  { x: 59, y: 43, voc: "banqueiro", title: "Lapidário", shop: "lapidaria", king: "grey" },
+  { x: 53, y: 46, voc: "guarda", title: "Processador", shop: "processamento", king: "thorn" },
+  { x: 41, y: 41, voc: "ferreiro", title: "Carpinteiro", shop: "carpintaria", king: "thorn" },
+  { x: 43, y: 36, voc: "sacerdote", title: "Alquimista", shop: "alquimista", king: "thorn" },
+  { x: 50, y: 35, voc: "druid", title: "Curtidor", shop: "curtume", king: "ash" },
+  { x: 59, y: 35, voc: "banqueiro", title: "Joalheiro", shop: "joalheria", king: "ash" },
+  { x: 65, y: 38, voc: "sacerdote", title: "Encantador", shop: "encantador", king: "grey" },
+  { x: 63, y: 44, voc: "mercador", title: "Ferramenteiro", shop: "ferramentas", king: "grey" },
+  { x: 57, y: 46, voc: "mercador", title: "Leiloeiro", shop: "market", king: "ash" },
 ].map(n => ({ ...n, dir: "down", moving: false, anim: 0, npc: true }));
 
 // ---------- interiores e masmorra (faixa abaixo do mapa) ----------

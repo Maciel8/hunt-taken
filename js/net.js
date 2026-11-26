@@ -84,6 +84,17 @@ export const api = {
   adminReceive: obj => rpc("admin_set_receive", { p_receive: obj }),
   // clã 2.0
   clanVault: (action, args = {}) => rpc("clan_vault_action", { p_action: action, p_args: args }),
+  // lojas, forja modular, processamento, armazém
+  shopView: id => rpc("shop_view", { p_shop: id }),
+  shopBuy: (id, t, qty) => rpc("shop_buy", { p_shop: id, p_tpl: t, p_qty: qty }),
+  shopSell: (id, args) => rpc("shop_sell", { p_shop: id, p_args: args }),
+  forgePreview: (type, slots) => rpc("modular_preview", { p_type: type, p_slots: slots }),
+  forgeStart: (type, slots, ench) => rpc("forge_modular_start", { p_type: type, p_slots: slots, p_enchant: ench }),
+  processingView: () => rpc("processing_view"),
+  processStart: (stone, method, qty) => rpc("process_stones_start", { p_stone: stone, p_method: method, p_qty: qty }),
+  processFinish: id => rpc("process_stones_finish", { p_job: id }),
+  warehouse: (action, args = {}) => rpc("warehouse_action", { p_action: action, p_args: args }),
+  renameItem: (id, name) => rpc("rename_item", { p_item: id, p_name: name }),
   bestiary: () => rpc("bestiary_view"),
   resetPoints: () => rpc("reset_points"),
   chooseClass: id => rpc("choose_class", { p_class: id }),
