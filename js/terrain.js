@@ -141,11 +141,11 @@ export function solkarOasisGrass(c, x, y) {
 // Clareiras íntimas e orgânicas de Bosques de Sylvana (relativas ao centro da cidade)
 export const SYLVANA_CLEARINGS = [
   [0, 0, 14.5, "Santuário"],
-  [0, -52, 9.5, "Druidas"],
-  [-54, -22, 9.5, "Lenhadores"],
-  [54, -26, 9.5, "Alquimia"],
-  [-48, 38, 9.5, "Comércio"],
-  [52, 36, 9.5, "Herbanário"],
+  [0, -52, 11, "Druidas"],
+  [-54, -22, 11, "Lenhadores"],
+  [54, -26, 11, "Alquimia"],
+  [-48, 38, 11, "Comércio"],
+  [52, 36, 11, "Herbanário"],
 ];
 
 // Tipo de chão em cada ponto dentro da cidade (sem círculos geométricos ou anéis artificiais!)
@@ -285,8 +285,10 @@ export function cityWater(c, x, y) {
   if (c.theme === "sylvana") {
     if (e > .98) return null;
     // Dois riachos sinuosos passando ENTRE as clareiras (pontes só nas estradas estreitas!)
-    const s1 = Math.abs(dx - 28 - 10 * Math.sin((dy + 10) / 22) - dy * .26) < 2.0 && dy > -84 && dy < 86;
-    const s2 = Math.abs(dy - 58 - 9 * Math.sin((dx + 12) / 22) + dx * .10) < 1.95 && dx > -82 && dx < 84;
+    // riacho do sul atravessa de oeste a leste; o do norte desce serpenteando e DESÁGUA nele (sem cruzar)
+    const south = 58 + 8 * Math.sin((dx + 12) / 17) - dx * .04;
+    const s2 = Math.abs(dy - south) < 1.95 && dx > -82 && dx < 84;
+    const s1 = Math.abs(dx - 30 - 11 * Math.sin((dy + 10) / 17) - dy * .1) < 2.0 && dy > -84 && dy < south;
     if (!s1 && !s2) return null;
     const gk = cityGroundKind(c, x, y);
     return { t: "water", bridge: gk === "street" || Math.abs(dx) < 2.6 || Math.abs(dy) < 2.6 };

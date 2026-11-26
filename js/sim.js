@@ -223,10 +223,12 @@ export function monTick() {
   for (const m of S.mons) {
     const mt = MONS[m.type], h = m.home || HUNTS.find(x => x.id === m.hunt);
     if (!m.alive) { if (t >= m.respawnAt) { const pos = freeTile(h); m.x = pos.x; m.y = pos.y; m.hp = mt.hp; m.alive = true; m.path = []; if (m.boss) log(`${mt.name} apareceu em ${h.name}!`, "bad"); } continue; }
-    const d = dist(m, p), engaged = p.dead === 0 && p.task === "hunt" && p.huntId === m.hunt && (p.target === m || d < 2.2);
+    // quem apanha persegue (inclusive de arqueiro/mago a distância) e quem está perto ataca
+    if (m.hitT > 0) m.aggro = now() + 8000;
+    const d = dist(m, p), engaged = p.dead === 0 && p.task === "hunt" && p.huntId === m.hunt && (p.target === m || d < 2.2 || (m.aggro > t && d < 12));
     if (engaged) {
-      if (d > 1.25) { if (!m.path.length || (m.think -= 1) <= 0) { m.think = 2; const pp = findPath(m.x, m.y, Math.round(p.x), Math.round(p.y), 3000); m.path = pp ? pp.slice(0, -1) : []; } }
-      else { m.path = []; m.face = p.x > m.x ? 1 : -1; if (m.cd-- <= 0) { m.cd = 2; const dd = Math.hypot(p.x - m.x, p.y - m.y) || 1; m.atkDx = (p.x - m.x) / dd; m.atkDy = (p.y - m.y) / dd; m.atkT = .3; const dmg = Math.max(0, Math.floor(mt.atk * (.5 + Math.random()) - defOf(p))); later(.14, () => { if (!m.alive) return; if (dmg) { p.hitT = .14; burst(p, "#ff8a8a", 4, 1.6); } else ring(p, "#9fe8c9"); fx.push({ x: p.x, y: p.y, v: dmg ? "-" + dmg : "bloqueou", t: 8, c: dmg ? "#ff8a8a" : "#9fe8c9" }); }); } }
+      if (d > 1.25) { if (!m.path.length || (m.think -= 1) <= 0) { m.think = 2; const pp = findPath(Math.round(m.x), Math.round(m.y), Math.round(p.x), Math.round(p.y), 3000); m.path = pp ? pp.slice(0, -1) : []; if (!m.path.length && d > 1.25) { const dx = Math.sign(Math.round(p.x) - Math.round(m.x)), dy = Math.sign(Math.round(p.y) - Math.round(m.y)); if (walk(Math.round(m.x) + dx, Math.round(m.y) + dy)) m.path = [{ x: Math.round(m.x) + dx, y: Math.round(m.y) + dy }]; } } }
+      else { m.path = []; m.face = p.x > m.x ? 1 : -1; if (m.cd-- <= 0) { m.cd = 2; const dd = Math.hypot(p.x - m.x, p.y - m.y) || 1; m.atkDx = (p.x - m.x) / dd; m.atkDy = (p.y - m.y) / dd; m.atkT = .3; const raw = mt.atk * (.75 + Math.random() * .5), dmg = Math.max(Math.ceil(raw * .3), Math.floor(raw - defOf(p) * .7)), blocked = Math.random() < .08; /* mesma regra do servidor: dano mínimo de 30%; bloqueio é raro */ later(.14, () => { if (!m.alive) return; if (!blocked) { p.hitT = .14; burst(p, "#ff8a8a", 4, 1.6); } else ring(p, "#9fe8c9"); fx.push({ x: p.x, y: p.y, v: !blocked ? "-" + dmg : "bloqueou", t: 8, c: !blocked ? "#ff8a8a" : "#9fe8c9" }); }); } }
       continue;
     }
     // vaga devagar no próprio habitat, sem sair do raio

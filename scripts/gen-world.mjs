@@ -789,12 +789,14 @@ function buildSylvana(c) {
     const o = placeNear(c.x + dx, c.y + dy, { kind, sprite: sprite || undefined, scale, fw, fh, tint: tint || null, label }, Math.max(fw, fh) + .2, 16, true);
     if (o && room) addDoor(o, room);
   }
-  // Cabanas extras e hortas aninhadas nas 5 clareiras secundárias para nenhuma parecer vazia
-  for (const [gx, gy] of [[0, -52], [-54, -22], [54, -26], [-48, 38], [52, 36]]) {
-    for (const [ox2, oy2, sp] of [[-7, -5, "sylvana_hut"], [7, -4, "sylvana_cottage"], [-6, 6, "sylvana_garden"], [6, 6, "sylvana_trunkhouse"]]) {
-      placeNear(c.x + gx + ox2, c.y + gy + oy2, { kind: "building", sprite: sp, scale: 1.16, fw: 3, fh: 2 }, 2.1, 6, true);
-    }
-  }
+  // Clareiras arrumadas: ponto central (poço/estátua/fonte), canteiros em cruz e lanternas na borda; casas viradas pra praça
+  const CENTER = ["well", "statue", "fountain", "well", "statue"];
+  [[0, -52], [-54, -22], [54, -26], [-48, 38], [52, 36]].forEach(([gx, gy], i) => {
+    add({ x: c.x + gx, y: c.y + gy, kind: "building", sprite: CENTER[i], scale: 1.2, fw: 1, fh: 1 }, 1.2, true);
+    for (const [ox2, oy2] of [[-3, 0], [3, 0], [0, 3], [0, -3]]) add({ x: c.x + gx + ox2, y: c.y + gy + oy2, kind: "building", sprite: "flower_bed", fw: 1, fh: 1, solid: false }, .6, true);
+    for (let k = 0; k < 8; k++) { const a2 = k / 8 * 6.283 + .2; add({ x: Math.round(c.x + gx + Math.cos(a2) * 10.5), y: Math.round(c.y + gy + Math.sin(a2) * 10.5), kind: "building", sprite: "lantern_fence", fw: 1, fh: 1, solid: false }, .8, true); }
+    for (const [ox2, oy2, sp] of [[-7, 6, "sylvana_hut"], [7, 6, "sylvana_trunkhouse"]]) placeNear(c.x + gx + ox2, c.y + gy + oy2, { kind: "building", sprite: sp, scale: 1.16, fw: 3, fh: 2 }, 2.1, 4, true);
+  });
 
   // 3. Floresta urbana densíssima e em camadas: cabanas de musgo/tronco, hortas, árvores colossais, pinheiros e cogumelos
   const hutSp = ["sylvana_cottage", "sylvana_hut", "sylvana_trunkhouse", "sylvana_herbalist", "sylvana_garden"];
@@ -803,7 +805,10 @@ function buildSylvana(c) {
       const px = x + Math.round((rnd(x, y, 551) - .5) * 2), py = y + Math.round((rnd(x, y, 552) - .5) * 2);
       if (!inside(px, py, .02) || cityStreet(c, px + .5, py + .5) || wet(px, py, 2, 2) || !free(px, py, 1.95)) continue;
       const r = rnd(px, py, 553);
-      if (r < .24) add({ x: px, y: py, kind: "building", sprite: hutSp[Math.floor(rnd(px, py, 554) * hutSp.length)], scale: 1.14 + rnd(px, py, 555) * .18, fw: 3, fh: 2 }, 2.4, true);
+      // casas só beirando as trilhas (vila na mata), nunca soltas no meio do bosque
+      const nearStreet = [[4, 0], [-4, 0], [0, 4], [0, -4]].some(([ax, ay]) => cityStreet(c, px + ax + .5, py + ay + .5));
+      if (r < .14 && nearStreet) add({ x: px, y: py, kind: "building", sprite: hutSp[Math.floor(rnd(px, py, 554) * 4)], scale: 1.14 + rnd(px, py, 555) * .18, fw: 3, fh: 2 }, 2.4, true);
+      else if (r < .24) add({ x: px, y: py, kind: "building", sprite: r < .19 ? "flower_bed" : r < .22 ? "berry_bush" : "bush2", fw: 1, fh: 1, solid: false, decor: true }, 1.0, true);
       else if (r < .38) add({ x: px, y: py, kind: "colossal_tree", scale: 1.20 + rnd(px, py, 556) * .38, solid: true }, 2.9, true);
       else if (r < .85) add({ x: px, y: py, kind: "tree", sprite: r < .58 ? "oak" : r < .76 ? "pine" : "tree_round", tint: "ancient", big: 1.22 + rnd(px, py, 557) * .38, solid: true }, 1.65, true);
       else add({ x: px, y: py, kind: "tree", sprite: r < .92 ? "giant_mushrooms" : r < .96 ? "mushroom_red" : "bush_dark", big: 1.08, solid: false, decor: true }, 1.1, true);

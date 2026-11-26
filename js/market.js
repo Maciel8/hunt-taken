@@ -13,9 +13,10 @@ import { CAT } from "./progress.js";
 const esc = t => String(t ?? "").replace(/[&<>"']/g, c => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]));
 const tn = t => CAT.templates[t]?.name || ITEMS[t]?.name || t;
 const icon = t => { const n = ITEMS[t]?.icon || CAT.templates[t]?.icon || "orb"; return A.sp[n] ? `<img class="ic" src="assets/sprites/${n}.png" alt="">` : `<span class="ic ph"></span>`; };
-const GROUP = { arma: "Armas", escudo: "Armaduras", armadura: "Armaduras", acessorio: "Acessórios", equipamento: "Armaduras", ferramenta: "Ferramentas", bruto: "Materiais", barra: "Materiais", refinado: "Materiais", madeira: "Materiais", gema: "Materiais", couro: "Materiais", reagente: "Materiais", peixe: "Comida e poções", consumivel: "Comida e poções", erva: "Materiais" };
+const GROUP = { ferramenta: "Ferramentas", arma: "Armas", escudo: "Armaduras", armadura: "Armaduras", acessorio: "Acessórios", equipamento: "Armaduras", ferramenta: "Ferramentas", bruto: "Materiais", barra: "Materiais", refinado: "Materiais", madeira: "Materiais", gema: "Materiais", couro: "Materiais", reagente: "Materiais", peixe: "Comida e poções", consumivel: "Comida e poções", erva: "Materiais" };
 const grp = t => t === "potion" ? "Comida e poções" : GROUP[CAT.templates[t]?.category] || "Outros";
-const NPC_ITEMS = ["potion", "espada_aco", "escudo_madeira", "escudo_aco", "armadura_couro", "armadura_aco", "capacete_aco", "arco", "picareta_ferro"];
+// tudo que tem preço de catálogo no servidor está à venda na Loja
+const npcItems = () => Object.values(CAT.templates).filter(t => t.price != null && !t.deprecated).map(t => t.id);
 const Q = { side: "loja", sub: "buy", cat: "Tudo", q: "", sel: null, board: null, skew: 0 };
 const money = (c, v) => c === "gems" ? `💎 ${fmt(v)}` : `🪙 ${fmt(v)}`;
 const nowS = () => Date.now() + Q.skew;
@@ -52,9 +53,9 @@ function bindQty(P, get, max, draw) {
 
 // ======================= LOJA (NPC) =======================
 function npcBuy(box) {
-  const offers = NPC_ITEMS.filter(t => (CAT.templates[t]?.price ?? ITEMS[t]?.price) != null).map(t => ({ t, name: tn(t), each: CAT.templates[t]?.price ?? ITEMS[t]?.price, max: t === "potion" ? 9999 : 20 }));
+  const offers = npcItems().map(t => ({ t, name: tn(t), each: CAT.templates[t].price, max: t === "potion" ? 9999 : CAT.templates[t].stackable ? 999 : 20, stack: !!CAT.templates[t].stackable, lvl: CAT.templates[t].req_level || 1 })).sort((a, b) => grp(a.t).localeCompare(grp(b.t)) || a.each - b.each);
   const list = offers.filter(o => match(o.t, o.name));
-  box.innerHTML = `${chips([...new Set(offers.map(o => grp(o.t)))].sort())}<div class="mk-split"><div class="mk-list">${list.map(o => `<button class="mk-row ${Q.sel === o.t ? "sel" : ""}" data-pick="${o.t}">${icon(o.t)}<span><b>${esc(o.name)}</b><small>catálogo</small></span><span class="mk-q">à vontade</span><b class="mk-p">${money("gold", o.each)}</b></button>`).join("")}</div><div class="mk-panel" id="mkPanel"><p class="muted">Escolha um item.</p></div></div>`;
+  box.innerHTML = `${chips([...new Set(offers.map(o => grp(o.t)))].sort())}<div class="mk-split"><div class="mk-list">${list.map(o => `<button class="mk-row ${Q.sel === o.t ? "sel" : ""}" data-pick="${o.t}">${icon(o.t)}<span><b>${esc(o.name)}</b><small>${o.stack ? "material · pureza 50%" : o.lvl > 1 ? `nível ${o.lvl}+` : "catálogo"}</small></span><span class="mk-q">à vontade</span><b class="mk-p">${money("gold", o.each)}</b></button>`).join("")}</div><div class="mk-panel" id="mkPanel"><p class="muted">Escolha um item.</p></div></div>`;
   bindChips(box, npcBuy); box.querySelectorAll("[data-pick]").forEach(b => b.onclick = () => { Q.sel = b.dataset.pick; npcBuy(box); });
   const o = offers.find(x => x.t === Q.sel); if (!o) return; const P = box.querySelector("#mkPanel");
   const draw = qty => { const total = o.each * qty, after = (S.gold || 0) - total;
@@ -64,7 +65,7 @@ function npcBuy(box) {
     bindQty(P, () => qty, o.max, draw);
     P.querySelector("#mkGo").onclick = async ev => { ev.target.disabled = true;
       try { const st = await api.buyShop(o.t, qty); applyServer(st.state || st); toast(`Comprado: ${qty}× ${o.name}`); renderAll(); refresh(); } catch (e) { toast(e.message, true); ev.target.disabled = false; } }; };
-  draw(o.t === "potion" ? 10 : 1);
+  draw(o.t === "potion" ? 10 : o.stack ? 10 : 1);
 }
 function myGoods() {
   return [...S.stacks.filter(s => CAT.templates[s.t]?.category !== "artefato").map(s => ({ key: `s:${s.t}:${s.purity}`, t: s.t, name: tn(s.t), qty: s.qty, pur: s.purity, stack: true })),

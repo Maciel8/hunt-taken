@@ -39,7 +39,7 @@ export async function act(fn, okMsg) {
   catch (e) { toast(e.message || "erro", true); return null; }
 }
 
-export function renderAll() { if (!S.p) return; applyWorld(); renderQuestbar(); renderProfile(); renderField(); renderEquip(); renderHunt(); renderBehavior(); renderFeed(); renderEvent(); if (openTab && !["map", "equip", "quests", "clan", "trades", "market", "char", "profs", "workshop", "bestiary", "wallet", "shop"].includes(openTab)) renderTab(openTab); if (openTab === "workshop") refreshJobs(); const cb = document.querySelector("[data-tab=char]"); if (cb) cb.classList.toggle("ping", (S.pointsFree || 0) > 0 || (P().lvl >= 5 && (!P().classId || P().classId === "aventureiro"))); }
+export function renderAll() { if (!S.p) return; applyWorld(); renderQuestbar(); renderProfile(); renderField(); renderEquip(); renderHunt(); renderBehavior(); renderFeed(); renderEvent(); if (openTab && !["vip", "map", "equip", "quests", "clan", "trades", "market", "char", "profs", "workshop", "bestiary", "wallet", "shop"].includes(openTab)) renderTab(openTab); if (openTab === "workshop") refreshJobs(); const cb = document.querySelector("[data-tab=char]"); if (cb) cb.classList.toggle("ping", (S.pointsFree || 0) > 0 || (P().lvl >= 5 && (!P().classId || P().classId === "aventureiro"))); }
 
 function renderProfile() {
   const p = P(); const a = p.expCur ?? expFor(p.lvl), b = p.expNext ?? expFor(p.lvl + 1);
