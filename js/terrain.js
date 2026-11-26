@@ -3,6 +3,7 @@
 // e pelos scripts de geração/validação no Node. Tudo é determinístico pela semente.
 // Coordenadas "locais" = as do coração (mapa 300×200 em 0..300 × 0..200); o continente vai de -OX a SIZE-OX.
 export const SIZE = 10000, OX = 4900, OY = 5200, SEED = 7331, CHUNK = 32;
+export const OVT = 5, OVN = 2000;   // mapa-múndi: 1 px = 5 tiles, 2000×2000
 export const HEART = { x: 0, y: 0, w: 300, h: 200 };
 
 // ---------- biomas ----------
@@ -110,8 +111,8 @@ export function tileAt(x, y, ground = false) {
       else if (s.kind === "lake" && d < s.w + (fbm(gx / 11, gy / 11, 2, SEED + 41) - .5) * 4) lake = true;
       else if (s.kind === "city" && cityInside(s.city, x + .5, y + .5) < 1.045) city = s.city; }
     if (dock) return B.DOCK;
+    if (lake && !road) return B.LAKE;   // lago do oásis fica dentro da cidade
     if (city) return B.CITY;
-    if (lake && !road) return B.LAKE;
     if (ground) return b;
     if (road) return (riverNear || b === B.LAKE || b === B.MURKY || b === B.SHALLOW) ? B.BRIDGE : B.ROAD;
     if (river && b !== B.DEEP && b !== B.OCEAN) return b === B.TUNDRA || b === B.GLACIER ? B.ICE : B.RIVER;
@@ -142,17 +143,20 @@ export function zoneAt(x, y) {
 export function regionName(z) { if (!z || !z.city) return "Mar aberto"; return (z.city.regions && z.city.regions[z.ring - 1]) || z.city.name; }
 
 // ---------- objetos de um pedaço (árvores, rochas, casas, marcos de anel) — determinístico ----------
-const TREE = { [B.FOREST]: [["pine", .11], ["oak", .07], ["tree_round", .05]], [B.ANCIENT]: [["oak", .13, "ancient", 1.4], ["willow", .05]], [B.PLAINS]: [["oak", .025], ["tree_round", .02]], [B.FIELD]: [["tree_round", .012]],
-  [B.SWAMP]: [["willow", .08, "swamp"], ["dead", .06]], [B.MANGROVE]: [["willow", .14, "swamp"]], [B.DESERT]: [["palm", .008], ["cactus", .02]], [B.CANYON]: [["boulder", .04, "sand"]],
-  [B.MOUNTAIN]: [["boulder", .05], ["pine", .04, "snow"]], [B.VOLCANIC]: [["boulder", .035], ["dead", .025]], [B.TUNDRA]: [["pine", .12, "snow"], ["boulder", .045, "ice"]], [B.GLACIER]: [["boulder", .02, "ice"]],
-  [B.DARK]: [["dead", .07, "void"], ["ruinwall", .025]], [B.BEACH]: [["palm", .012]], [B.CLIFF]: [["boulder", .05]] };
+// densidades medidas no coração (objetos por tile em cada região) — o continente usa as mesmas, sem "caixa" diferente
+const TREE = { [B.PLAINS]: [["oak", .0163], ["oak_small", .016], ["tree_small", .0142], ["tree_round", .0152]], [B.FIELD]: [["oak_small", .01], ["tree_small", .008], ["tree_round", .008]],
+  [B.FOREST]: [["pine", .105], ["pine_small", .055], ["oak", .056], ["oak_small", .052], ["tree_round", .053]], [B.ANCIENT]: [["oak", .11, "ancient", 1.4], ["pine", .08, "ancient"], ["oak_small", .05, "ancient"], ["willow", .04]],
+  [B.SWAMP]: [["dead", .031], ["willow", .0125]], [B.MANGROVE]: [["willow", .05, "swamp"], ["dead", .02]], [B.DESERT]: [["palm", .008], ["cactus", .02]], [B.CANYON]: [["boulder", .0485]],
+  [B.MOUNTAIN]: [["boulder", .047], ["peak", .02]], [B.VOLCANIC]: [["boulder", .035], ["dead", .025], ["peak", .015]], [B.TUNDRA]: [["peak", .0315], ["pine_small", .031, "snow"], ["pine", .033, "snow"], ["boulder", .034]], [B.GLACIER]: [["peak", .02], ["boulder", .02, "ice"]],
+  [B.DARK]: [["dead", .013], ["ruinwall", .031], ["boulder", .015]], [B.BEACH]: [["palm", .012]], [B.CLIFF]: [["boulder", .05]] };
+export const treeDensity = b => (TREE[b] || []).reduce((a, t) => a + t[1], 0);
 function clearAt(x, y) {
   if (!NET.ready) return false; const c = NET.clear || (NET.clear = new Map());
   if (!NET.clearBuilt) { NET.clearBuilt = true; for (const h of NET.hunts || []) for (let dy = -h.r - 2; dy <= h.r + 2; dy++) for (let dx = -h.r - 2; dx <= h.r + 2; dx++) if (dx * dx + dy * dy <= (h.r + 2) ** 2) c.set((h.cx + dx) + "," + (h.cy + dy), 1);
     for (const n of NET.nodes || []) for (let dy = -2; dy <= 2; dy++) for (let dx = -2; dx <= 2; dx++) c.set((n.x + dx) + "," + (n.y + dy), 1); }
   return c.has(x + "," + y);
 }
-const DECOR = { [B.PLAINS]: { p: .07, s: ["bush", "bush2", "flower_red", "flower_yellow", "flower_yellow2", "mushroom_red", "berry_bush"] }, [B.FIELD]: { p: .06, s: ["bush", "flower_yellow", "flower_yellow2", "hay"] },
+const DECOR = { [B.PLAINS]: { p: .046, s: ["flower_yellow2", "flower_red", "flower_yellow", "bush3", "berry_bush"] }, [B.FIELD]: { p: .06, s: ["bush", "flower_yellow", "flower_yellow2", "hay"] },
   [B.FOREST]: { p: .09, s: ["bush_dark", "bush_dark2", "mushroom", "stump", "log", "bush"] }, [B.ANCIENT]: { p: .09, s: ["bush_dark", "bush_dark2", "mushroom", "moss_rock", "stump"] },
   [B.SWAMP]: { p: .08, s: ["reed", "cattail", "dead_shrub", "mushroom"] }, [B.MANGROVE]: { p: .08, s: ["reed", "cattail", "bush_dark"] }, [B.DESERT]: { p: .025, s: ["dead_shrub", "bone_pile", "skull"] },
   [B.CANYON]: { p: .03, s: ["dead_shrub", "moss_rock2"] }, [B.MOUNTAIN]: { p: .05, s: ["moss_rock", "moss_rock2", "pine_small"] }, [B.TUNDRA]: { p: .04, s: ["pine_small", "moss_rock"], t: "snow" },
@@ -161,17 +165,17 @@ export function chunkObjects(cx, cy, tiles) {
   const out = [], n = CHUNK + 2; tiles = tiles || chunkTiles(cx, cy);
   for (let j = 1; j <= CHUNK; j++) for (let i = 1; i <= CHUNK; i++) {
     const b = tiles[j * n + i]; const x = cx * CHUNK + i - 1, y = cy * CHUNK + j - 1; const list = TREE[b]; if (!list) continue;
-    if (x > HEART.x - 4 && y > HEART.y - 4 && x < HEART.x + HEART.w + 3 && y < HEART.y + HEART.h + 3) continue;   // borda do coração livre
+    if (x >= HEART.x && y >= HEART.y && x < HEART.x + HEART.w && y < HEART.y + HEART.h) continue;   // dentro do coração quem planta é o world.js (mesmas densidades)
     if (clearAt(x, y)) continue;   // clareira nas áreas de caça e em volta dos depósitos
     // não planta grudado em estrada, rio, cidade ou água
     let near = false; for (const o of [tiles[j * n + i - 1], tiles[j * n + i + 1], tiles[(j - 1) * n + i], tiles[(j + 1) * n + i]]) if (o === B.ROAD || o === B.BRIDGE || o === B.CITY || o === B.RIVER || o === B.DOCK || isBlocked(o)) near = true; if (near) continue;
     const r = hashTile(x, y, 3); let acc = 0;
-    for (const [sp, p, tint, big] of list) { acc += p; if (r < acc) { const kind = sp === "palm" || sp === "cactus" ? sp : sp === "ruinwall" ? "ruinwall" : sp === "boulder" ? "tree" : "tree"; out.push({ x, y, kind, sprite: sp, tint: tint || null, big: big || (sp === "pine" || sp === "oak" ? .9 + hashTile(x, y, 5) * .35 : 1), solid: true, proc: true }); break; } }
+    for (const [sp, p, tint, big] of list) { acc += p; if (r < acc) { const kind = ["palm", "cactus", "ruinwall", "peak"].includes(sp) ? sp : "tree"; out.push({ x, y, kind, sprite: sp, tint: tint || null, big: big || (sp === "pine" || sp === "oak" ? .9 + hashTile(x, y, 5) * .35 : 1), solid: true, proc: true }); break; } }
   }
   // enfeites do chão (sem colisão), mesma família de sprites do coração
   for (let j = 1; j <= CHUNK; j++) for (let i = 1; i <= CHUNK; i++) {
     const b = tiles[j * n + i], list = DECOR[b]; if (!list) continue; const x = cx * CHUNK + i - 1, y = cy * CHUNK + j - 1, r = hashTile(x, y, 8);
-    if (r > list.p) continue; if (x > HEART.x - 2 && y > HEART.y - 2 && x < HEART.x + HEART.w + 1 && y < HEART.y + HEART.h + 1) continue;
+    if (r > list.p) continue; if (x >= HEART.x && y >= HEART.y && x < HEART.x + HEART.w && y < HEART.y + HEART.h) continue;
     const sp = list.s[Math.floor(hashTile(x, y, 9) * list.s.length)]; out.push({ x, y, kind: "tree", sprite: sp, tint: list.t || null, big: .8 + hashTile(x, y, 10) * .3, solid: false, decor: true, proc: true });
   }
   // construções das cidades (geradas sobre o calçamento)

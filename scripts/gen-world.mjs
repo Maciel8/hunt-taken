@@ -1,12 +1,12 @@
 // Gera a rede do continente (cidades, rios, estradas, docas, oásis, construções, áreas de caça, depósitos)
 // e o mapa-múndi, a partir do terreno determinístico de js/terrain.js. Saídas:
 //   assets/world-net.json            → usado pelo jogo e pelo Web Worker
-//   tmp overview .rgb (1000x1000)     → convertido em assets/world-overview.png
+//   tmp overview .rgb (2000x2000)     → convertido em assets/world-overview.webp (1 px = 5 tiles)
 //   supabase SQL das áreas de caça/criaturas/depósitos/cidades (impresso em arquivo)
 // Uso: node scripts/gen-world.mjs <dir_saida_tmp>
 import fs from "node:fs";
 import { fbm as fbm2 } from "../js/terrain.js";
-import { SIZE, OX, OY, B, baseBiome, initNet, tileAt, isBlocked, NET, zoneAt, chunkObjects, chunkTiles, CHUNK, BIOME_RGB, hashTile, coastAt, cityInside } from "../js/terrain.js";
+import { SIZE, OX, OY, B, baseBiome, initNet, tileAt, isBlocked, NET, zoneAt, chunkObjects, chunkTiles, CHUNK, BIOME_RGB, hashTile, coastAt, cityInside, OVT, OVN, treeDensity } from "../js/terrain.js";
 const OUT = process.argv[2] || "."; const t0 = Date.now(); const log = (...a) => console.log(`[${((Date.now() - t0) / 1000).toFixed(1)}s]`, ...a);
 const edge = JSON.parse(fs.readFileSync(new URL("../assets/heartland-edge.json", import.meta.url)));
 const L = (gx, gy) => [gx - OX, gy - OY];          // global → local
@@ -129,48 +129,90 @@ const ports = []; { const c = C("valen"); let x = c.x + c.rx + 2, y = c.y; while
   ports.push({ city: "valen", x, y, docks: [dock, dock2], ships: [[x + 13, y - 4], [x + 13, y + 5]] });
   roads.push({ from: "valen", to: "porto", pts: [[c.x + c.rx, c.y], [x - 6, y]] }); }
 // oásis de Solkar
-const lakes = [{ x: C("solkar").x, y: C("solkar").y + 22, r: 9 }, { x: C("solkar").x + 110, y: C("solkar").y + 30, r: 14 }];
+const lakes = [{ x: C("solkar").x, y: C("solkar").y + 22, r: 12 }, { x: C("solkar").x + 110, y: C("solkar").y + 30, r: 14 }];
 
-// ---------- cidades: muralha temática, portões, torres, casas entre as ruas, marcos de cada cidade ----------
-const THEME = {
-  valen: { houses: ["house", "house2", "barn"], props: ["barrel", "crate", "crate_stack", "cart", "barrel_rack"], tint: null },
-  khazad: { houses: ["house2", "mine", "house"], props: ["anvil", "weapon_rack", "campfire", "cart", "barrel"], tint: null },
-  solkar: { houses: ["tent", "house_thatch", "house_thatch2"], props: ["well", "barrel", "crate"], tint: null },
-  sylvana: { houses: ["witch_hut", "house_thatch", "house_thatch2"], props: ["flower_bed", "statue", "bush", "berry_bush"], tint: null },
-  nocthar: { houses: ["house", "house2"], props: ["skull", "bone_pile", "candle", "relic"], tint: "void" } };
+// ---------- cidades: muralha poligonal temática, 4 portões nas estradas, ruas em grade, praça com monumento,
+// 12-18 prédios grandes (com porta; taverna e salão têm interior), casas e jardins nos quarteirões, arredores temáticos ----------
+const STREET_X = 16, STREET_Y = 14;
+const onStreet = (c, x, y) => { const dx = x - c.x, dy = y - c.y; if (Math.abs(dx) < 3 || Math.abs(dy) < 3) return true;
+  const mx = ((dx % STREET_X) + STREET_X) % STREET_X, my = ((dy % STREET_Y) + STREET_Y) % STREET_Y; return Math.min(mx, STREET_X - mx) < 2 || Math.min(my, STREET_Y - my) < 2; };
+const POLY = { khazad: { n: 8, r: [.9, .9], rot: Math.PI / 8 }, valen: { n: 11, r: [.8, .92], open: [-.75, .75] }, solkar: { n: 12, r: [.84, .93] }, sylvana: { n: 15, r: [.76, .94] }, nocthar: { n: 7, r: [.78, .94], rot: .3 } };
+// [sprite ou kind, escala, rótulo, interior?] — os prédios grandes de cada cidade
+const LAND = {
+  valen: [["tavern", 1.5, "Taverna do Cais", "taverna"], ["castle", .55, "Capitania do Porto", "salao"], ["barn", 1.7, "Armazém Naval"], ["barn", 1.6, "Armazém de Peixe"], ["house2", 1.6, "Guilda dos Mercadores"], ["house", 1.5, "Casa de Câmbio"], ["barn", 1.4, "Estaleiro"], ["house_thatch", 1.5, "Cordoaria"], ["house2", 1.4, "Curtume"], ["house", 1.4, "Alfândega"], ["watchtower", 1.6, "Torre do Vigia"], ["house_thatch2", 1.4, "Peixaria"], ["barn", 1.5, "Depósito de Sal"], ["house", 1.4, "Escola de Navegação"]],
+  khazad: [["forgecitadel", 1, "Cidadela-Forja", "salao"], ["tavern", 1.5, "Taverna da Bigorna", "taverna"], ["house2", 1.6, "Guilda dos Ferreiros", null, "stone"], ["mine", 1.6, "Entrada da Mina Real"], ["barn", 1.5, "Armazém de Minério", null, "stone"], ["forge", 1.4, "Fundição"], ["forge", 1.4, "Oficina de Armas"], ["house2", 1.5, "Casa da Moeda", null, "stone"], ["house", 1.4, "Alojamento dos Mineiros", null, "stone"], ["barn", 1.4, "Carvoaria", null, "stone"], ["house2", 1.4, "Lapidação Bruta", null, "stone"], ["watchtower", 1.6, "Torre de Vigia"], ["house", 1.4, "Casa do Mestre", null, "stone"], ["forge", 1.3, "Forja do Aprendiz"]],
+  solkar: [["dome", 1.3, "Palácio do Oásis", "salao"], ["tavern", 1.5, "Taverna da Areia", "taverna"], ["dome", 1.1, "Templo do Sol"], ["dome", 1.1, "Casa das Gemas"], ["house_thatch", 1.5, "Guilda dos Joalheiros"], ["tent", 1.6, "Tenda do Caravaneiro"], ["tent", 1.6, "Tenda das Especiarias"], ["barn", 1.4, "Armazém de Água"], ["house_thatch2", 1.4, "Lapidário"], ["dome", 1, "Banho Público"], ["tent", 1.5, "Tenda dos Tecidos"], ["house_thatch", 1.4, "Estábulo de Camelos"], ["watchtower", 1.5, "Torre de Areia"], ["dome", 1, "Observatório"]],
+  sylvana: [["witch_hut", 1.8, "Taverna da Raiz", "taverna"], ["house_thatch", 1.7, "Salão dos Druidas", "salao"], ["witch_hut", 1.6, "Alquimia Verde"], ["house_thatch2", 1.6, "Guilda dos Lenhadores"], ["barn", 1.5, "Serraria Élfica"], ["witch_hut", 1.5, "Herbanário"], ["house_thatch", 1.5, "Casa da Seiva"], ["house_thatch2", 1.5, "Arqueiros da Copa"], ["witch_hut", 1.4, "Viveiro"], ["house_thatch", 1.4, "Ateliê de Arcos"], ["barn", 1.4, "Celeiro de Ervas"], ["witch_hut", 1.4, "Casa da Anciã"], ["house_thatch2", 1.4, "Tecelagem"], ["house_thatch", 1.4, "Mel e Cera"]],
+  nocthar: [["darktower", 1, "Torre do Arcano", "salao"], ["tavern", 1.5, "Taverna da Lua Negra", "taverna"], ["darktower", .8, "Biblioteca Proibida"], ["house2", 1.6, "Guilda dos Encantadores", null, "void"], ["house", 1.5, "Mercado Negro", null, "void"], ["darktower", .7, "Ossuário"], ["house2", 1.5, "Relicário", null, "void"], ["house", 1.4, "Casa das Velas", null, "void"], ["barn", 1.4, "Cripta", null, "void"], ["house2", 1.4, "Alquimia Sombria", null, "void"], ["house", 1.4, "Escriba", null, "void"], ["darktower", .7, "Vigia do Abismo"], ["house2", 1.4, "Casa do Necromante", null, "void"], ["house", 1.4, "Pousada Sombria", null, "void"]] };
+const SMALL = { valen: ["house", "house2", "house_thatch"], khazad: ["house2", "house"], solkar: ["house_thatch", "house_thatch2", "tent"], sylvana: ["house_thatch", "house_thatch2", "witch_hut"], nocthar: ["house", "house2"] };
+const GARDEN = { valen: ["barrel", "crate", "crate_stack", "flower_bed", "bush"], khazad: ["barrel", "cart", "weapon_rack", "crate"], solkar: ["well", "barrel", "flower_bed"], sylvana: ["flower_bed", "bush", "berry_bush", "statue"], nocthar: ["skull", "candle", "bone_pile", "relic"] };
+const ROOMS_OUT = [];
 for (const c of cities.filter(c => !c.heart)) {
-  const th = THEME[c.id]; c.buildings = []; const used = []; const free = (x, y, r) => !used.some(([ux, uy, ur]) => Math.hypot(ux - x, uy - y) < r + ur);
-  const add = (x, y, sprite, fw, fh, extra = {}, r = 2) => { x = Math.round(x); y = Math.round(y); used.push([x, y, r]); c.buildings.push({ x, y, kind: "building", sprite, fw, fh, ...extra }); };
-  const e = (x, y) => cityInside(c, x, y), street = (x, y) => { const dx = x - c.x, dy = y - c.y, an = Math.atan2(dy / c.ry, dx / c.rx), en = e(x, y) + .03 * Math.sin(5 * an + c.x) + .018 * Math.sin(9 * an + c.y); return Math.abs(dx) < 3.6 || Math.abs(dy) < 3.6 || Math.abs(en - .42) < .055 || Math.abs(en - .72) < .045 || en < .17; };
-  // muralha: um bloco por tile do contorno, com 4 portões (vãos) e torres
-  const per = Math.round(Math.PI * (3 * (c.rx + c.ry) - Math.sqrt((3 * c.rx + c.ry) * (c.rx + 3 * c.ry))));
-  let lastTower = -99;
-  for (let k = 0; k < per; k++) { const a = k / per * 6.283, x = Math.round(c.x + Math.cos(a) * c.rx), y = Math.round(c.y + Math.sin(a) * c.ry);
-    const gateNear = GATES(c).some(g => Math.hypot(g[0] - x, g[1] - y) < 4.2); if (gateNear) continue;
-    const towerAtGate = GATES(c).some(g => Math.abs(Math.hypot(g[0] - x, g[1] - y) - 5.2) < .7);
-    if (towerAtGate || k - lastTower > 34) { if (free(x, y, 2)) { add(x, y, null, 2, 2, { kind: "ctower", theme: c.id, gate: towerAtGate }, 2.2); lastTower = k; } continue; }
-    if (free(x, y, .4)) { used.push([x, y, .5]); c.buildings.push({ x, y, kind: "cwall", theme: c.id }); } }
-  // praça: fonte (Solkar: lago no meio-sul), barracas em volta
-  if (c.id !== "solkar") add(c.x, c.y - 2, c.id === "nocthar" ? "orb" : "fountain", 2, 1, { kind: c.id === "nocthar" ? "crystal" : "building" }, 3);
-  for (let k = 0; k < 8; k++) { const a = k / 8 * 6.283 + .39; add(c.x + Math.cos(a) * 12, c.y + Math.sin(a) * 10, "stall", 2, 1, {}, 2); }
-  // casas numa grade com variação, entre avenidas e ruas em anel
-  for (let gy = c.y - c.ry; gy <= c.y + c.ry; gy += 6) for (let gx = c.x - c.rx; gx <= c.x + c.rx; gx += 7) {
-    const x = gx + (hashTile(gx, gy, 151) - .5) * 2, y = gy + (hashTile(gx, gy, 152) - .5) * 1.5; const en = e(x, y);
-    if (en > .9 || street(x, y) || street(x - 1.5, y) || street(x + 1.5, y) || street(x, y - 1.2) || !free(x, y, 2.2)) continue;
-    if (c.id === "solkar" && Math.hypot(x - c.x, y - c.y - 22) < 14) continue;
-    const r = hashTile(gx, gy, 153);
-    if (c.id === "sylvana" && r < .22) { used.push([Math.round(x), Math.round(y), 2]); c.buildings.push({ x: Math.round(x), y: Math.round(y), kind: "tree", sprite: "oak", big: 2.1, tint: "ancient", solid: true }); continue; }
-    if (c.id === "nocthar" && r < .12) { add(x, y, null, 3, 3, { kind: "darktower" }, 4); continue; }
-    if (c.id === "solkar" && r < .16) { add(x, y, null, 3, 2, { kind: "dome" }, 3); continue; }
-    if (r < .8) add(x, y, th.houses[Math.floor(hashTile(gx, gy, 154) * th.houses.length)], 3, 2, th.tint ? { tint: th.tint } : {}, 2.6);
-    else { const sp = th.props[Math.floor(hashTile(gx, gy, 155) * th.props.length)]; add(x, y, sp, 1, 1, {}, 1.2); } }
-  // detalhes próprios
-  if (c.id === "solkar") for (let k = 0; k < 10; k++) { const a = k / 10 * 6.283; const x = Math.round(c.x + Math.cos(a) * 13), y = Math.round(c.y + 22 + Math.sin(a) * 11); if (free(x, y, 1)) { used.push([x, y, 1]); c.buildings.push({ x, y, kind: "palm", solid: true }); } }
-  if (c.id === "khazad") for (const [dx, dy] of [[-16, -6], [16, -6], [-16, 7], [16, 7]]) { if (free(c.x + dx, c.y + dy, 2)) add(c.x + dx, c.y + dy, "anvil", 1, 1, { kind: "forge" }, 2); }
-  if (c.id === "nocthar") for (let k = 0; k < 6; k++) { const a = k / 6 * 6.283 + .5, x = c.x + Math.cos(a) * 20, y = c.y + Math.sin(a) * 17; if (free(x, y, 1.5)) add(x, y, null, 1, 1, { kind: "crystal" }, 1.5); }
-  if (c.id === "sylvana") for (let k = 0; k < 8; k++) { const a = k / 8 * 6.283 + .2, x = c.x + Math.cos(a) * 22, y = c.y + Math.sin(a) * 19; if (free(x, y, 2)) { used.push([Math.round(x), Math.round(y), 2]); c.buildings.push({ x: Math.round(x), y: Math.round(y), kind: "tree", sprite: "oak", big: 2.4, tint: "ancient", solid: true }); } }
+  const B2 = c.buildings = [], used = [], rnd = (a, b, s) => hashTile(Math.round(a), Math.round(b), s);
+  const free = (x, y, r) => !used.some(([ux, uy, ur]) => Math.hypot(ux - x, uy - y) < r + ur);
+  const add = (o, r) => { o.x = Math.round(o.x); o.y = Math.round(o.y); if (c.id === "solkar" && o.kind !== "palm" && o.kind !== "bazaar" && Math.hypot(o.x - c.x, o.y - c.y - 22) < 15) return o; used.push([o.x, o.y, r]); B2.push(o); return o; };
+  // muralha poligonal (vértices dentro da elipse da cidade), torres nos cantos, portões onde passam as avenidas
+  const P = POLY[c.id], verts = []; for (let k = 0; k < P.n; k++) { const a = k / P.n * 6.283 + (P.rot || 0), f = P.r[0] + (P.r[1] - P.r[0]) * rnd(k, c.x, 171); verts.push([c.x + Math.cos(a) * c.rx * f, c.y + Math.sin(a) * c.ry * f, a]); }
+  const gates = []; for (const [gx, gy] of [[1, 0], [0, 1], [-1, 0], [0, -1]]) { for (let k = 0; k < P.n; k++) { const A = verts[k], Bv = verts[(k + 1) % P.n];
+      const d = gx * (Bv[1] - A[1]) - gy * (Bv[0] - A[0]); if (!d) continue; const t = (gx * (c.y - A[1]) - gy * (c.x - A[0])) / d, s = ((A[0] - c.x) * (Bv[1] - A[1]) - (A[1] - c.y) * (Bv[0] - A[0])) / d;
+      if (t >= 0 && t <= 1 && s > 0) { gates.push([A[0] + (Bv[0] - A[0]) * t, A[1] + (Bv[1] - A[1]) * t, gx, gy]); break; } } }
+  c.gates = gates.map(g => [Math.round(g[0]), Math.round(g[1])]); c.wall = verts.map(v => [Math.round(v[0] * 10) / 10, Math.round(v[1] * 10) / 10]); c.open = P.open || null;
+  const isOpen = a => { if (!P.open) return false; let v = Math.atan2(Math.sin(a), Math.cos(a)); return v > P.open[0] && v < P.open[1]; };
+  for (let k = 0; k < P.n; k++) { const A = verts[k], Bv = verts[(k + 1) % P.n], L = Math.hypot(Bv[0] - A[0], Bv[1] - A[1]), mid = Math.atan2((A[1] + Bv[1]) / 2 - c.y, (A[0] + Bv[0]) / 2 - c.x);
+    if (isOpen(mid)) continue;
+    if (!isOpen(A[2]) && free(A[0], A[1], 1)) add({ x: A[0], y: A[1], kind: "ctower", theme: c.id, fw: 2, fh: 2 }, 2.4);
+    for (let s = 0; s <= L; s += 1) { const x = A[0] + (Bv[0] - A[0]) * s / L, y = A[1] + (Bv[1] - A[1]) * s / L;
+      const g = gates.find(g => Math.hypot(g[0] - x, g[1] - y) < 4.6); if (g) continue;
+      if (gates.some(g => Math.abs(Math.hypot(g[0] - x, g[1] - y) - 5.6) < .5) && free(x, y, 1.6)) { add({ x, y, kind: "ctower", theme: c.id, fw: 2, fh: 2, gate: true }, 2.2); continue; }
+      if (free(x, y, .45)) { used.push([Math.round(x), Math.round(y), .5]); B2.push({ x: Math.round(x), y: Math.round(y), kind: "cwall", theme: c.id }); } } }
+  const inside = (x, y, m = 0) => { let w = false; for (let i = 0, j = P.n - 1; i < P.n; j = i++) { const [xi, yi] = verts[i], [xj, yj] = verts[j]; if ((yi > y) !== (yj > y) && x < (xj - xi) * (y - yi) / (yj - yi) + xi) w = !w; } return w && Math.hypot((x - c.x) / c.rx, (y - c.y) / c.ry) < .86 - m; };
+  // praça com monumento
+  add({ x: c.x, y: c.y - 3, kind: c.id === "nocthar" ? "crystal" : "building", sprite: c.id === "khazad" ? "statue" : c.id === "sylvana" ? "statue" : "fountain", fw: 2, fh: 1, scale: 1.4 }, 3);
+  if (c.id === "nocthar") for (let k = 0; k < 8; k++) { const a = k / 8 * 6.283; add({ x: c.x + Math.cos(a) * 8, y: c.y + Math.sin(a) * 6, kind: "crystal" }, 1); }
+  if (c.id === "sylvana") add({ x: c.x + 6, y: c.y - 6, kind: "tree", sprite: "oak", big: 3, tint: "ancient", solid: true }, 3);
+  if (c.id === "khazad") for (const [dx, dy] of [[-8, 4], [8, 4], [-8, -6], [8, -6]]) add({ x: c.x + dx, y: c.y + dy, kind: "cauldron" }, 1.5);
+  for (let k = 0; k < 6; k++) { const a = k / 6 * 6.283 + .5; const x = c.x + Math.cos(a) * 12, y = c.y + Math.sin(a) * 9.5; if (!onStreet(c, x, y) && free(x, y, 1.6)) add({ x, y, kind: c.id === "solkar" ? "bazaar" : "building", sprite: "stall", fw: 2, fh: 1, hue: k }, 1.6); }
+  // quarteirões: centros das células da grade de ruas, do mais perto da praça pra fora
+  const blocks = []; for (let j = -5; j <= 4; j++) for (let i = -5; i <= 4; i++) { const x = c.x + STREET_X / 2 + i * STREET_X, y = c.y + STREET_Y / 2 + j * STREET_Y;
+    if (Math.abs(x - c.x) < 14 && Math.abs(y - c.y) < 12) continue; if (inside(x, y, .04)) blocks.push([x, y, Math.hypot((x - c.x) / c.rx, (y - c.y) / c.ry)]); }
+  blocks.sort((a, b) => a[2] - b[2]);
+  const lands = LAND[c.id].slice(0, 12 + Math.floor(rnd(c.x, c.y, 172) * 5)); let bi = 0;
+  // prédio principal (o que tem o salão) de frente pra praça, no centro norte
+  { const [sp, sc, label, room, tint] = LAND[c.id].find(l => l[3] === "salao"), kind = ["castle", "darktower", "dome", "forge", "forgecitadel"].includes(sp) ? sp : "building";
+    const fw = kind === "forgecitadel" ? 9 : kind === "castle" ? 7 : Math.round(3 * (kind === "building" ? sc : 1)) + 1, fh = kind === "forgecitadel" ? 5 : kind === "castle" ? 4 : Math.round(2 * (kind === "building" ? sc : 1));
+    const o = add({ x: c.x, y: c.y - 10, kind, sprite: kind === "building" ? sp : undefined, scale: kind === "building" ? sc * 1.2 : undefined, small: kind === "castle" ? true : undefined, fw, fh, tint: tint || null, label, door: `${c.id}_${room}` }, 5);
+    ROOMS_OUT.push({ id: `${c.id}_${room}`, city: c.id, name: `${label} · ${c.name}`, outside: { x: o.x, y: o.y + 1 }, kind: room }); }
+  for (const [sp, sc, label, room, tint] of lands.filter(l => l[3] !== "salao")) { while (bi < blocks.length && (c.id === "solkar" && Math.hypot(blocks[bi][0] - c.x, blocks[bi][1] - c.y - 22) < 18)) bi++; const bk = blocks[bi++]; if (!bk) break;
+    const kind = ["castle", "darktower", "dome", "forge", "forgecitadel"].includes(sp) ? sp : "building";
+    const fw = Math.round((kind === "forgecitadel" ? 9 : kind === "castle" ? 7 : 3) * (kind === "building" ? sc : 1)), fh = Math.round((kind === "forgecitadel" ? 5 : kind === "castle" ? 4 : 2) * (kind === "building" ? sc : 1));
+    const o = add({ x: bk[0], y: bk[1] + 2, kind, sprite: kind === "building" ? sp : undefined, scale: kind === "building" ? sc : undefined, small: kind === "castle" ? true : undefined, fw, fh, tint: tint || null, label, door: room ? `${c.id}_${room}` : undefined }, Math.max(fw, fh) * .8);
+    if (room) ROOMS_OUT.push({ id: `${c.id}_${room}`, city: c.id, name: `${label} · ${c.name}`, outside: { x: o.x, y: o.y + 1 }, kind: room });
+    // a casa tem lote: canteiro/caixas do tema ao lado
+    const gp = GARDEN[c.id]; for (const s of [-1, 1]) { const x = bk[0] + s * (fw / 2 + 2), y = bk[1] + 2; if (!onStreet(c, x, y) && free(x, y, .8)) add({ x, y, kind: "building", sprite: gp[Math.floor(rnd(x, y, 173) * gp.length)], fw: 1, fh: 1 }, .8); } }
+  // quarteirões restantes: 2 a 4 casas menores com jardins (mesma densidade da Vila de Arken)
+  for (const [bx, by] of blocks.slice(bi)) for (const [ox, oy] of [[-4, -3], [4, -3], [-4, 3], [4, 3]]) { const x = bx + ox, y = by + oy + 1; if (!inside(x, y) || onStreet(c, x, y) || !free(x, y, 2.3)) continue;
+    const r = rnd(x, y, 174); if (r < .62) add({ x, y, kind: "building", sprite: SMALL[c.id][Math.floor(rnd(x, y, 175) * SMALL[c.id].length)], fw: 3, fh: 2, tint: c.id === "nocthar" ? "void" : null }, 2.3);
+    else if (r < .82) { const gp = GARDEN[c.id]; add({ x, y, kind: "building", sprite: gp[Math.floor(rnd(x, y, 176) * gp.length)], fw: 1, fh: 1 }, 1); }
+    else if (c.id === "sylvana" || c.id === "valen") add({ x, y, kind: "tree", sprite: c.id === "sylvana" ? "oak" : "tree_round", big: c.id === "sylvana" ? 2.2 : 1, tint: c.id === "sylvana" ? "ancient" : null, solid: true }, 2); }
+  // detalhes do tema dentro dos muros
+  if (c.id === "solkar") for (let k = 0; k < 14; k++) { const a = k / 14 * 6.283; const x = c.x + Math.cos(a) * 17, y = c.y + 22 + Math.sin(a) * 14; if (free(x, y, 1)) add(k % 2 ? { x, y, kind: "palm" } : { x, y, kind: "bazaar", hue: k }, 1.2); }
+  if (c.id === "khazad") { const g0 = c.gates.find(g => g[0] > c.x) || c.gates[0]; for (let x = c.x + 14; x < g0[0] - 6; x++) if (!B2.some(o => o.x === x && Math.abs(o.y - (c.y + 4)) < 2)) B2.push({ x, y: c.y + 4, kind: "rail", solid: false }); }
+  if (c.id === "sylvana") for (let k = 0; k < 18; k++) { const a = k / 18 * 6.283 + .1, x = c.x + Math.cos(a) * c.rx * .62, y = c.y + Math.sin(a) * c.ry * .62; if (!onStreet(c, x, y) && free(x, y, 2)) add({ x, y, kind: "tree", sprite: "oak", big: 2.4, tint: "ancient", solid: true }, 2); }
+  // arredores: posto de guarda em cada estrada que chega, e o "entorno" temático da cidade
+  const outside = [];
+  for (const g of c.gates) { const gx = g[0] + Math.sign(g[0] - c.x) * 50, gy = g[1] + Math.sign(g[1] - c.y) * 50, px = gx + (g[1] === c.y ? 0 : 5), py = gy + (g[0] === c.x ? 0 : 5);
+    outside.push({ x: px, y: py, kind: "building", sprite: "watchtower", fw: 2, fh: 2, scale: 1.2 }, { x: px + 3, y: py + 1, kind: "building", sprite: "banner", fw: 1, fh: 1 }, { x: px - 3, y: py + 2, kind: "building", sprite: "campfire", fw: 1, fh: 1 }, { x: px + 2, y: py + 4, kind: "building", sprite: "tent", fw: 3, fh: 2 }); }
+  const ring = (n, R, fn) => { for (let k = 0; k < n; k++) { const a = rnd(k, c.x, 177) * 6.283, d = R * (1 + rnd(k, c.y, 178) * .5); fn(c.x + Math.cos(a) * c.rx * d, c.y + Math.sin(a) * c.ry * d, k); } };
+  if (c.id === "khazad") ring(3, 1.9, (x, y, k) => outside.push({ x, y, kind: "building", sprite: "mine", fw: 3, fh: 2 }, { x: x + 5, y: y + 2, kind: "building", sprite: "tent", fw: 3, fh: 2 }, { x: x - 4, y: y + 3, kind: "building", sprite: "cart", fw: 2, fh: 1 }, { x: x + 1, y: y + 5, kind: "building", sprite: "campfire", fw: 1, fh: 1 }, ...[1, 2, 3, 4, 5, 6].map(i => ({ x: x - 4 - i, y: y + 3, kind: "rail", solid: false }))));
+  if (c.id === "valen") { const px = ports[0]?.x || c.x + c.rx + 20; for (const s of [-1, 1]) for (let k = 0; k < 6; k++) outside.push({ x: px - 8 - (k % 3) * 6, y: c.y + s * (c.ry + 8 + Math.floor(k / 3) * 7), kind: "building", sprite: k % 2 ? "house_thatch" : "house_thatch2", fw: 3, fh: 2 }, { x: px - 4, y: c.y + s * (c.ry + 10 + k * 3), kind: "boat", solid: false });
+    outside.push({ x: px + 18, y: c.y - 9, kind: "lighthouse", fw: 2, fh: 2 }); }
+  if (c.id === "solkar") ring(4, 1.6, (x, y) => { outside.push({ x, y, kind: "farm", fw: 10, fh: 7, solid: false }, { x: x + 7, y: y - 1, kind: "building", sprite: "well", fw: 1, fh: 1 }, { x: x - 7, y, kind: "palm" }, { x: x + 8, y: y + 4, kind: "palm" }); });
+  if (c.id === "sylvana") ring(3, 1.8, (x, y) => outside.push({ x, y, kind: "building", sprite: "barn", fw: 3, fh: 2 }, { x: x + 4, y: y + 2, kind: "building", sprite: "log", fw: 1, fh: 1 }, { x: x - 4, y: y + 2, kind: "building", sprite: "stump", fw: 1, fh: 1 }, { x: x + 1, y: y + 4, kind: "building", sprite: "cart", fw: 2, fh: 1 }));
+  if (c.id === "nocthar") ring(4, 1.7, (x, y) => { for (let k = 0; k < 6; k++) { const a = k / 6 * 6.283; outside.push({ x: x + Math.cos(a) * 5, y: y + Math.sin(a) * 4, kind: k % 2 ? "crystal" : "building", sprite: "candle", fw: 1, fh: 1 }); } outside.push({ x, y, kind: "building", sprite: "statue", fw: 1, fh: 1 }); });
+  if (c.id === "valen" || c.id === "khazad") ring(2, 2.1, (x, y) => outside.push({ x, y, kind: "farm", fw: 12, fh: 8, solid: false, crop: c.id === "khazad" ? "soil" : "wheat" }, { x: x + 8, y, kind: "building", sprite: "barn", fw: 3, fh: 2 }, { x: x - 8, y: y + 1, kind: "building", sprite: "haystack", fw: 1, fh: 1 }));
+  for (const o of outside) { o.x = Math.round(o.x); o.y = Math.round(o.y); o.outside = true; const t = tileAt(o.x, o.y); if (isBlocked(t) || t === B.ROAD || t === B.BRIDGE || t === B.HEART) continue; if (Math.hypot((o.x - c.x) / c.rx, (o.y - c.y) / c.ry) < 1.15) continue; B2.push(o); }
 }
-
+const CITY_ROOMS = ROOMS_OUT;
 log("construções ok");
 const hunts = [], monsters = [], nodes = [], markers = [];
 const okArea = (x, y, r) => { for (let a = 0; a < 6.283; a += .5) for (const rr of [0, r * .5, r]) { const px = Math.round(x + Math.cos(a) * rr), py = Math.round(y + Math.sin(a) * rr); const b = tileAt(px, py); if (isBlocked(b) || b === B.HEART || b === B.CITY) return false; } return true; };
@@ -294,23 +336,23 @@ log("pontos de estrada", wpN.length, "ligações", wpE.length);
 
 // ---------- validação: nada importante bloqueado ----------
 const problems = [];
-for (const c of cities.filter(c => !c.heart)) { if (isBlocked(tileAt(c.x, c.y))) problems.push("cidade bloqueada " + c.id); for (const o of c.buildings) if (tileAt(o.x, o.y) !== B.CITY) problems.push(`construção fora do calçamento ${c.id} ${o.sprite} ${tileAt(o.x, o.y)}`); }
+for (const c of cities.filter(c => !c.heart)) { if (isBlocked(tileAt(c.x, c.y))) problems.push("cidade bloqueada " + c.id); for (const o of c.buildings) if (!o.outside && tileAt(o.x, o.y) !== B.CITY) problems.push(`construção fora do calçamento ${c.id} ${o.sprite} ${tileAt(o.x, o.y)}`); }
 for (const n of nodes) if (isBlocked(tileAt(n.x, n.y))) problems.push("depósito bloqueado " + n.id);
 for (const h of hunts) if (!okArea(h.cx, h.cy, 6)) problems.push("caça bloqueada " + h.id);
 for (const r of roads) for (let i = 0; i < r.pts.length; i += 2) { const [x, y] = r.pts[i].map(Math.floor); const b = tileAt(x, y); if (b !== B.HEART && isBlocked(b)) { problems.push(`estrada bloqueada ${r.from}-${r.to} em ${x},${y} (${b})`); break; } }
 // estrada contínua: cada ponto andável e ligado
 log("problemas:", problems.length ? problems.slice(0, 12).join(" | ") : "nenhum");
 
-// ---------- mapa-múndi 1000×1000 (1 px = 10 tiles) ----------
-const W = 1000, rgb = Buffer.alloc(W * W * 3);
-for (let j = 0; j < W; j++) for (let i = 0; i < W; i++) { const x = i * 10 - OX + 5, y = j * 10 - OY + 5; let b = tileAt(x, y); if (b === B.HEART) b = B.PLAINS; const c = BIOME_RGB[b] || [255, 0, 255]; const k = (j * W + i) * 3;
-  const sh = .9 + (hashTile(i, j, 9) - .5) * .08; rgb[k] = Math.min(255, c[0] * sh); rgb[k + 1] = Math.min(255, c[1] * sh); rgb[k + 2] = Math.min(255, c[2] * sh); }
-const line = (a, b, col, w = 1) => { const [ax, ay] = G(...a), [bx, by] = G(...b); const n = Math.ceil(Math.hypot(bx - ax, by - ay) / 5); for (let s = 0; s <= n; s++) { const px = Math.round((ax + (bx - ax) * s / n) / 10), py = Math.round((ay + (by - ay) * s / n) / 10); for (let oy = -w + 1; oy < w; oy++) for (let ox = -w + 1; ox < w; ox++) { const qx = px + ox, qy = py + oy; if (qx < 0 || qy < 0 || qx >= W || qy >= W) continue; const k = (qy * W + qx) * 3; rgb[k] = col[0]; rgb[k + 1] = col[1]; rgb[k + 2] = col[2]; } } };
-for (const r of rivers) for (let i = 1; i < r.pts.length; i++) line(r.pts[i - 1], r.pts[i], [60, 128, 180]);
-for (const r of roads) for (let i = 1; i < r.pts.length; i++) line(r.pts[i - 1], r.pts[i], [170, 132, 84]);
+// ---------- mapa-múndi 2000×2000 (1 px = 5 tiles): mesmas cores médias e o mesmo escurecimento por árvores do zoom distante ----------
+const W = OVN, OV = OVT, rgb = Buffer.alloc(W * W * 3);
+for (let j = 0; j < W; j++) for (let i = 0; i < W; i++) { const x = i * OV - OX + 2, y = j * OV - OY + 2; let b = tileAt(x, y); if (b === B.HEART) b = B.PLAINS; const c = BIOME_RGB[b] || [255, 0, 255]; const k = (j * W + i) * 3;
+  const sh = (.95 + (fbm2(x / 5, y / 5, 1, 621) - .5) * .12 + (hashTile(i, j, 9) - .5) * .05) * (1 - .38 * Math.min(1, treeDensity(b) * 1.6)); rgb[k] = Math.min(255, c[0] * sh); rgb[k + 1] = Math.min(255, c[1] * sh); rgb[k + 2] = Math.min(255, c[2] * sh); }
+const line = (a, b, col, w = 1) => { const [ax, ay] = G(...a), [bx, by] = G(...b); const n = Math.ceil(Math.hypot(bx - ax, by - ay) / 2); for (let s2 = 0; s2 <= n; s2++) { const px = Math.round((ax + (bx - ax) * s2 / n) / OV), py = Math.round((ay + (by - ay) * s2 / n) / OV); for (let oy = -w + 1; oy < w; oy++) for (let ox = -w + 1; ox < w; ox++) { const qx = px + ox, qy = py + oy; if (qx < 0 || qy < 0 || qx >= W || qy >= W) continue; const k = (qy * W + qx) * 3; rgb[k] = col[0]; rgb[k + 1] = col[1]; rgb[k + 2] = col[2]; } } };
+for (const r of rivers) for (let i = 1; i < r.pts.length; i++) line(r.pts[i - 1], r.pts[i], [48, 112, 155]);
+for (const r of roads) for (let i = 1; i < r.pts.length; i++) line(r.pts[i - 1], r.pts[i], [172, 131, 83]);
 fs.writeFileSync(`${OUT}/world-overview.rgb`, rgb);
 
-const net = { version: 2, size: SIZE, ox: OX, oy: OY, cities, rivers, roads, ports, lakes, edge, hunts, monsters, nodes, wp, territory, markers };
+const net = { version: 3, size: SIZE, ox: OX, oy: OY, cities, rivers, roads, ports, lakes, edge, hunts, monsters, nodes, wp, territory, markers, rooms: CITY_ROOMS };
 fs.writeFileSync(new URL("../assets/world-net.json", import.meta.url), JSON.stringify(net));
 fs.writeFileSync(`${OUT}/world-gen.json`, JSON.stringify({ hunts, monsters, nodes, cities: cities.map(({ buildings, ...c }) => c), problems }, null, 1));
 log("pronto: assets/world-net.json", (JSON.stringify(net).length / 1024).toFixed(0) + " KB");

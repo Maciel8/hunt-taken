@@ -17,13 +17,25 @@ const { CHUNK, B } = TR;
 export const CONT = { ready: false, net: null, overview: null, worker: null, stats: { gen: 0, l2: 0, hits: 0 } };
 
 // ---------- carga ----------
+const MEANS = {};
+function meanTex(im) { const c = document.createElement("canvas"); c.width = im.width; c.height = im.height; const g = c.getContext("2d"); g.drawImage(im, 0, 0); const d = g.getImageData(0, 0, c.width, c.height).data; let r = 0, gg = 0, b = 0, n = 0; for (let i = 0; i < d.length; i += 16) { r += d[i]; gg += d[i + 1]; b += d[i + 2]; n++; } return [r / n, gg / n, b / n]; }
+export function buildHeartLod(W) {
+  const { tregion, objects, U, MW: mw, MH: mh, DW: dw, UPT: upt } = W, texOf = ["grass", "grass_dark", "swamp_red", "earth", "stone_dark", "snow", "ruins", "grass"];
+  const m = k => MEANS[k] || (MEANS[k] = CONT.tex0[k] ? meanTex(CONT.tex0[k]) : [94, 158, 52]);
+  const c = document.createElement("canvas"); c.width = mw; c.height = mh; const g = c.getContext("2d"), im = g.createImageData(mw, mh), d = im.data, dark = new Uint8Array(mw * mh);
+  for (const o of objects) if (o.y >= 0 && o.y < mh && o.x >= 0 && o.x < mw) dark[o.y * mw + o.x] = 1;
+  for (let y = 0; y < mh; y++) for (let x = 0; x < mw; x++) { const u = (y * upt + 2) * dw + x * upt + 2; let col;
+    if (U.bridge[u]) col = m("bridge"); else if (U.water[u]) col = m("water"); else if (U.road[u]) col = m("dirt"); else if (U.field[u] === 1) col = [215, 180, 90]; else if (U.field[u] === 2) col = [122, 86, 52]; else { const ix = Math.max(7, Math.min(mw - 8, x)), iy = Math.max(7, Math.min(mh - 8, y)); col = m(texOf[tregion[iy * mw + ix]] || "grass"); }   // perto da borda o desenho das regiões não chega: usa a região de dentro
+    let fv = .95 + (TR.vnoise(x / 5, y / 5, 621) - .5) * .12 + (TR.hashTile(x, y, 623) - .5) * .05; if (dark[y * mw + x]) fv *= .62; const o = (y * mw + x) * 4;
+    d[o] = col[0] * fv; d[o + 1] = col[1] * fv; d[o + 2] = col[2] * fv; d[o + 3] = 255; }
+  g.putImageData(im, 0, 0); return CONT.heartLod = c;
+}
 function texData(tex) { const out = {}; for (const k of ["grass", "grass_dark", "grass_gold", "sand", "cobble", "plaza", "swamp", "swamp_red", "rock", "stone_dark", "earth", "dirt", "snow", "ruins", "water", "lava", "bridge"]) { const im = tex[k]; if (!im) continue; const w = im.width, h = im.height, c = document.createElement("canvas"); c.width = w; c.height = h; const g = c.getContext("2d"); g.drawImage(im, 0, 0); out[k] = { w, h, data: g.getImageData(0, 0, w, h).data }; } return out; }
 export async function loadContinent(texSrc, version) {
-  try { const tex = texData(texSrc);
+  try { CONT.tex0 = texSrc; const tex = texData(texSrc);
     const net = await (await fetch("assets/world-net.json", { cache: "no-cache" })).json();
     TR.initNet(net); CONT.net = net;
-    CONT.overview = await new Promise(res => { const im = new Image(); im.onload = () => res(im); im.onerror = () => res(null); im.src = "assets/world-overview.png?v=" + (version || ""); });
-    CONT.heartMid = await new Promise(res => { const im = new Image(); im.onload = () => res(im); im.onerror = () => res(null); im.src = "assets/heart-mid.webp?v=" + (version || ""); });
+    CONT.overview = await new Promise(res => { const im = new Image(); im.onload = () => res(im); im.onerror = () => res(null); im.src = "assets/world-overview.webp?v=" + (version || ""); });
     startWorker(net, tex, version);
     CONT.ready = true;
   } catch (e) { console.warn("continente não carregou", e); }
@@ -153,7 +165,7 @@ function startWorker(net, tex, version) {
 }
 function request(tier, cx, cy) { const k = cx + "," + cy; if (L1[tier].has(k) || pending.has(tier + ":" + k) || !CONT.worker || inflight >= 4) return; pending.add(tier + ":" + k); inflight++; CONT.worker.postMessage({ type: "chunk", tier, cx, cy }); }
 // desenha alinhado aos pixels da tela (sem frestas nem linhas entre pedaços em qualquer zoom)
-function snapDraw(g, img, x, y, w, h) { const m = g.getTransform(), x0 = Math.round(m.a * x + m.e), y0 = Math.round(m.d * y + m.f), x1 = Math.round(m.a * (x + w) + m.e), y1 = Math.round(m.d * (y + h) + m.f);
+export function snapDraw(g, img, x, y, w, h) { const m = g.getTransform(), x0 = Math.round(m.a * x + m.e), y0 = Math.round(m.d * y + m.f), x1 = Math.round(m.a * (x + w) + m.e), y1 = Math.round(m.d * (y + h) + m.f);
   g.save(); g.setTransform(1, 0, 0, 1, 0, 0); g.drawImage(img, x0, y0, x1 - x0, y1 - y0); g.restore(); }
 const PXC = CHUNK * T;      // 1024 px de mundo por pedaço
 export const LOD_ZOOM = .12, HI_ZOOM = .4;
@@ -162,7 +174,7 @@ function requestLod(cx, cy) { const k = cx + "," + cy; if (LOD.has(k) || lodPend
 // zoom bem afastado: pedaços de 1 pixel por tile; o que ainda não chegou usa o mapa-múndi
 function drawLod(g, ox, oy, WW, WH) {
   const cx0 = fl(ox / PXC), cy0 = fl(oy / PXC), cx1 = fl((ox + WW) / PXC), cy1 = fl((oy + WH) / PXC), mid = [(cx0 + cx1) / 2, (cy0 + cy1) / 2], miss = [];
-  if (CONT.overview) { g.imageSmoothingEnabled = true; g.drawImage(CONT.overview, (ox / T + TR.OX) / 10, (oy / T + TR.OY) / 10, WW / T / 10, WH / T / 10, ox, oy, WW, WH); }
+  if (CONT.overview) { g.imageSmoothingEnabled = true; g.drawImage(CONT.overview, (ox / T + TR.OX) / TR.OVT, (oy / T + TR.OY) / TR.OVT, WW / T / TR.OVT, WH / T / TR.OVT, ox, oy, WW, WH); }
   g.imageSmoothingEnabled = false; if (WW / PXC > 60) return;   // continente inteiro na tela: só o mapa-múndi
   for (let cy = cy0; cy <= cy1; cy++) for (let cx = cx0; cx <= cx1; cx++) { const b = LOD.get(cx + "," + cy); if (b) snapDraw(g, b, cx * PXC, cy * PXC, PXC, PXC); else miss.push([cx, cy]); }
   miss.sort((a, b) => Math.hypot(a[0] - mid[0], a[1] - mid[1]) - Math.hypot(b[0] - mid[0], b[1] - mid[1])); for (const [cx, cy] of miss) requestLod(cx, cy);
@@ -184,7 +196,7 @@ export function drawContinent(g, ox, oy, WW, WH, t, zoom = 1) {
     // enquanto não chega: o outro nível, ou o 1 px/tile, ou o mapa-múndi
     const alt = (tier === "hi" ? L1.mid : L1.hi).get(k) || LOD.get(k);
     if (alt) { g.imageSmoothingEnabled = alt.width < 64 ? false : true; snapDraw(g, alt, x, y, PXC, PXC); g.imageSmoothingEnabled = false; }
-    else { requestLod(cx, cy); if (CONT.overview) { const s = CHUNK / 10; g.imageSmoothingEnabled = true; g.drawImage(CONT.overview, (cx * CHUNK + TR.OX) / 10, (cy * CHUNK + TR.OY) / 10, s, s, x, y, PXC + 1, PXC + 1); g.imageSmoothingEnabled = false; } }
+    else { requestLod(cx, cy); if (CONT.overview) { const s = CHUNK / TR.OVT; g.imageSmoothingEnabled = true; g.drawImage(CONT.overview, (cx * CHUNK + TR.OX) / TR.OVT, (cy * CHUNK + TR.OY) / TR.OVT, s, s, x, y, PXC + 1, PXC + 1); g.imageSmoothingEnabled = false; } }
   }
   // pré-carrega a volta
   for (let cy = cy0 - 1; cy <= cy1 + 1; cy++) for (let cx = cx0 - 1; cx <= cx1 + 1; cx++) if (cy < cy0 || cy > cy1 || cx < cx0 || cx > cx1) request(tier, cx, cy);
@@ -199,9 +211,9 @@ export function drawShips(g, t) { if (!CONT.ready) return; for (const p of CONT.
   g.fillStyle = "#b8322c"; g.fillRect(x - 2, y - 106, 16, 9); } }
 // minimapa fora do coração: recorte do mapa-múndi em volta do jogador
 export function drawMiniOverview(g, mx, my, w, h, px, py, span = 900) {
-  if (!CONT.overview) return null; const sx = (px + TR.OX - span / 2) / 10, sy = (py + TR.OY - span * h / w / 2) / 10, sw = span / 10, sh = span * h / w / 10;
+  if (!CONT.overview) return null; const sx = (px + TR.OX - span / 2) / TR.OVT, sy = (py + TR.OY - span * h / w / 2) / TR.OVT, sw = span / TR.OVT, sh = span * h / w / TR.OVT;
   g.imageSmoothingEnabled = true; g.drawImage(CONT.overview, sx, sy, sw, sh, mx, my, w, h); g.imageSmoothingEnabled = false;
-  return { tx: x => mx + (x + TR.OX - sx * 10) / span * w, ty: y => my + (y + TR.OY - sy * 10) / (span * h / w) * h };
+  return { tx: x => mx + (x + TR.OX - sx * TR.OVT) / span * w, ty: y => my + (y + TR.OY - sy * TR.OVT) / (span * h / w) * h };
 }
 export const cities = () => CONT.net ? CONT.net.cities : [];
 export const ports = () => CONT.net ? CONT.net.ports : [];

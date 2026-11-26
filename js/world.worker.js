@@ -22,6 +22,7 @@ function tex(name, f, x, y) { if (f !== 1) { x *= f; y *= f; f = 1; } const t = 
 const CITY_TH = { valen: { base: "grass", street: "cobble", plaza: "plaza" }, khazad: { base: "stone_dark", street: "cobble", plaza: "rock", tint: [.85, .82, .8] },
   solkar: { base: "sand", street: "plaza", plaza: "plaza", tint: [1.04, .98, .86] }, sylvana: { base: "grass_dark", street: "bridge", plaza: "grass" }, nocthar: { base: "ruins", street: "cobble", plaza: "ruins", tint: [.82, .74, .98] } };
 const OCEAN = { [B.DEEP]: [16, 34, 70], [B.OCEAN]: [26, 58, 106], [B.SHALLOW]: [48, 110, 150] };
+function inPoly(P, x, y) { if (!P) return true; let w = false; for (let i = 0, j = P.length - 1; i < P.length; j = i++) { const [xi, yi] = P[i], [xj, yj] = P[j]; if ((yi > y) !== (yj > y) && x < (xj - xi) * (y - yi) / (yj - yi) + xi) w = !w; } return w; }
 function segD(px, py, a, b) { const dx = b[0] - a[0], dy = b[1] - a[1], L = dx * dx + dy * dy; let t = L ? ((px - a[0]) * dx + (py - a[1]) * dy) / L : 0; t = t < 0 ? 0 : t > 1 ? 1 : t; return Math.hypot(px - a[0] - t * dx, py - a[1] - t * dy); }
 
 // ---------- desenho de um pedaço ----------
@@ -66,11 +67,13 @@ function renderChunk(cx, cy, PX) {
         let shore = false; for (const [dx, dy] of [[.45, 0], [-.45, 0], [0, .45], [0, -.45]]) { const nb = at(fx + ox + dx, fy + oy + dy); if (!isWater(nb) && nb !== B.HEART) { shore = true; break; } }
         if (shore) { const fo = .45 + vnoise((gx0 + fx) * 6, (gy0 + fy) * 6, 513) * .4; r += (235 - r) * fo; g += (245 - g) * fo; bl += (250 - bl) * fo; }
         else if (hashTile(Math.floor(wpx * f / 8), Math.floor(wpy * f / 8), 7) > .996) { r = g = bl = 230; } }
-      else if (b === B.CITY && city) { const dx = tx0 + fx - city.x - .5, dy = ty0 + fy - city.y - .5, an = Math.atan2(dy / city.ry, dx / city.rx), en = Math.hypot(dx / city.rx, dy / city.ry) + .03 * Math.sin(5 * an + city.x) + .018 * Math.sin(9 * an + city.y);
-        const plaza = en < .15, ring = Math.abs(en - .42) < .035 || Math.abs(en - .72) < .03, ave = (Math.abs(dx) < 2.2 || Math.abs(dy) < 2.2);
-        if (plaza) [r, g, bl] = tex(TH.plaza, f, wpx, wpy); else if (ring || ave) [r, g, bl] = tex(TH.street, f, wpx, wpy); else [r, g, bl] = tex(TH.base, f, wpx, wpy);
+      else if (b === B.CITY && city) { const wx3 = tx0 + fx, wy3 = ty0 + fy, dx = wx3 - city.x - .5, dy = wy3 - city.y - .5, inW = inPoly(city.wall, wx3, wy3);
+        const mx = ((dx % 16) + 16) % 16, my = ((dy % 14) + 14) % 14, plaza = Math.abs(dx) < 11 && Math.abs(dy) < 9, ave = Math.abs(dx) < 2.2 || Math.abs(dy) < 2.2, grid = Math.min(mx, 16 - mx) < 1.3 || Math.min(my, 14 - my) < 1.3;
+        const street = inW && (ave || grid);
+        if (inW && plaza) [r, g, bl] = tex(TH.plaza, f, wpx, wpy); else if (street) [r, g, bl] = tex(TH.street, f, wpx, wpy); else [r, g, bl] = tex(TH.base, f, wpx, wpy);
         const k = TH.tint; if (k) { r *= k[0]; g *= k[1]; bl *= k[2]; }
-        if (!plaza && (ring || ave)) { const edge = Math.min(Math.abs(Math.abs(en - .42) - .035) * city.rx, Math.abs(Math.abs(en - .72) - .03) * city.rx, Math.abs(Math.abs(dx) - 2.2), Math.abs(Math.abs(dy) - 2.2)); if (edge < .14) { r *= .68; g *= .66; bl *= .64; } } }
+        if (street && !plaza) { const e1 = ave ? Math.min(Math.abs(Math.abs(dx) - 2.2), Math.abs(Math.abs(dy) - 2.2)) : Math.min(Math.abs(Math.min(mx, 16 - mx) - 1.3), Math.abs(Math.min(my, 14 - my) - 1.3)); if (e1 < .14) { r *= .7; g *= .68; bl *= .66; } }
+        else if (inW && plaza && (Math.abs(Math.abs(dx) - 11) < .15 || Math.abs(Math.abs(dy) - 9) < .15)) { r *= .7; g *= .68; bl *= .66; } }
       else { [r, g, bl] = tex(TEX_OF[b] || "grass", f, wpx, wpy); const tn = TONE[b]; if (tn) { r *= tn[0]; g *= tn[1]; bl *= tn[2]; }
         if (b === B.LAKE) { let shore = 0; for (const [dx, dy] of [[.5, 0], [-.5, 0], [0, .5], [0, -.5]]) { const nb = at(fx + ox + dx, fy + oy + dy); if (!isWater(nb) && nb !== B.HEART) shore = 1; }
           if (shore) { r = 0x4a; g = 0x7a; bl = 0x3e; } } }
@@ -78,7 +81,7 @@ function renderChunk(cx, cy, PX) {
       let eRiv = 9; if (dRiv) { eRiv = lerpG(dRiv, px, py);
         if (eRiv < .69) { if (eRiv > .35) { r = 0x6b; g = 0x52; bl = 0x33; } else if (eRiv > 0) { r = 0x4a; g = 0x7a; bl = 0x3e; } else { [r, g, bl] = tex("water", f, wpx, wpy); if (eRiv < -.33) { r = r * .65 + 7; g = g * .65 + 17.5; bl = bl * .65 + 28; } } } }
       // estradas: borda escura, terra, franja; em cima de água vira ponte de tábuas
-      if (dRoad && b !== B.CITY) { const dr = lerpG(dRoad, px, py);
+      if (dRoad && (b !== B.CITY || !city || !inPoly(city.wall, tx0 + fx, ty0 + fy))) { const dr = lerpG(dRoad, px, py);
         if (dr < .95) { const wet = eRiv < .69 || isWater(b);
           if (wet && dr < .9) { [r, g, bl] = tex("bridge", f, wpx, wpy); if (dr > .76) { r *= .55; g *= .5; bl *= .45; } }
           else if (dr < .75) [r, g, bl] = tex("dirt", f, wpx, wpy);

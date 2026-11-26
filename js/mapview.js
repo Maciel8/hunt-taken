@@ -47,8 +47,8 @@ function draw(cv) {
   const k = .18; V.cx += (V.tcx - V.cx) * k; V.cy += (V.tcy - V.cy) * k; V.span += (V.tspan - V.span) * k;
   const g = cv.getContext("2d"), v = view(cv), t = performance.now() / 1000; g.setTransform(1, 0, 0, 1, 0, 0); g.fillStyle = "#10213d"; g.fillRect(0, 0, v.W, v.H);
   g.imageSmoothingEnabled = true;
-  if (CONT.overview) g.drawImage(CONT.overview, 0, 0, 1000, 1000, v.tx(-OX), v.ty(-OY), SIZE * v.s, SIZE * v.s);
-  const hm = CONT.heartMid; if (hm) g.drawImage(hm, v.tx(0), v.ty(0), 300 * v.s, 200 * v.s);
+  if (CONT.overview) g.drawImage(CONT.overview, 0, 0, CONT.overview.width, CONT.overview.height, v.tx(-OX), v.ty(-OY), SIZE * v.s, SIZE * v.s);
+  if (CONT.heartLod && v.s * 5 > 1.2) { g.imageSmoothingEnabled = v.s < 1; g.drawImage(CONT.heartLod, v.tx(0), v.ty(0), 300 * v.s, 200 * v.s); g.imageSmoothingEnabled = true; }
   const tc = terrCanvas(); if (tc) { g.imageSmoothingEnabled = v.s * 16 < 3; g.drawImage(tc, v.tx(-OX), v.ty(-OY), tc.width * 16 * v.s, tc.height * 16 * v.s); g.imageSmoothingEnabled = true; }
   // estradas por cima (finas)
   if (CONT.net) { g.strokeStyle = "rgba(150,110,60,.85)"; g.lineWidth = Math.max(1, Math.min(3, v.s * 2)); for (const rd of CONT.net.roads) { g.beginPath(); rd.pts.forEach((p, i) => i ? g.lineTo(v.tx(p[0]), v.ty(p[1])) : g.moveTo(v.tx(p[0]), v.ty(p[1]))); g.stroke(); } }

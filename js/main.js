@@ -4,7 +4,7 @@ import { buildWorld, huntAt, inVila, NPCS } from "./world.js";
 import { spawnNear } from "./sim.js";
 import { S, P, newPlayer, spawnAll, playerTick, monTick, applyServer, log, fmt, walkTo, updateMovement, npcTick, keys } from "./sim.js";
 import { loadAssets, A } from "./art.js";
-import { loadContinent, registerContent } from "./continent.js";
+import { loadContinent, registerContent, buildHeartLod, procObjects } from "./continent.js";
 import { startPositionReports, playerAt, clickPlayer, loadCities } from "./cities.js";
 import { render, resize, tileAt, cv, cam, miniHit, miniWheel, viewSize, zoomBy, screenAt, hover } from "./render.js";
 import { renderAll, renderFeed, bindUI, showCreate, showReports, toast, showHuntPop, hideHuntPop, act, openModal } from "./ui.js";
@@ -28,7 +28,7 @@ const loading = (on, msg) => { $("loading").hidden = !on; if (msg) $("loadingMsg
 
 async function boot() {
   loading(true, "carregando o mundo…");
-  await loadAssets(); let ver = "dev"; try { ver = (await (await fetch("version.json", { cache: "no-store" })).json()).v || "dev"; } catch (e) { } await loadContinent(A.tex, ver); buildWorld(); registerContent(); resize(); window.addEventListener("resize", resize); try { new ResizeObserver(() => resize()).observe(cv.parentElement); } catch (e) { }
+  await loadAssets(); let ver = "dev"; try { ver = (await (await fetch("version.json", { cache: "no-store" })).json()).v || "dev"; } catch (e) { } await loadContinent(A.tex, ver); buildWorld(); registerContent(); Promise.all([import("./world.js"), import("./geo.js"), import("./data.js")]).then(([W, G, D]) => buildHeartLod({ ...W, ...G, MW: D.MW, MH: D.MH })); resize(); window.addEventListener("resize", resize); try { new ResizeObserver(() => resize()).observe(cv.parentElement); } catch (e) { }
   // link de recuperação de senha
   if (location.search.includes("reset=1") || location.hash.includes("type=recovery")) { loading(false); return showNewPassword(() => boot()); }
   const s = await auth.session();
@@ -91,7 +91,8 @@ function bindCanvas() {
     const m = miniHit(ev); if (m) { const { VW, VH } = viewSize(); cam.follow = false; cam.x = m.x - VW / 2; cam.y = m.y - VH / 2; return; }
     const { x, y } = tileAt(ev);
     // portas: clicou numa construção com entrada, anda até a porta e entra
-    const door = objects.find(o => o.door && x >= o.x - Math.floor(((o.fw || 1) - 1) / 2) - 1 && x <= o.x - Math.floor(((o.fw || 1) - 1) / 2) + (o.fw || 1) && y >= o.y - (o.fh || 1) - 2 && y <= o.y + 1);
+    const hitDoor = o => o.door && x >= o.x - Math.floor(((o.fw || 1) - 1) / 2) - 1 && x <= o.x - Math.floor(((o.fw || 1) - 1) / 2) + (o.fw || 1) && y >= o.y - (o.fh || 1) - 2 && y <= o.y + 1;
+    const door = objects.find(hitDoor) || procObjects(x - 8, y - 4, x + 8, y + 8).find(hitDoor);
     if (door) { const d = DOORS.find(q => q.room === door.door); if (d) { hideHuntPop(); const p = P(); if (Math.hypot(p.x - d.outside.x, p.y - d.outside.y) < 2.5) useDoor(door.door); else if (walkTo(d.outside.x, d.outside.y)) { p.pendingDoor = door.door; toast("Indo até a entrada"); } return; } }
     const al = ALTAR(); if (Math.abs(al.x - x) <= 2 && Math.abs(al.y - y) <= 2) { hideHuntPop(); openAltar(); return; }
     const nd = nodeAt(x, y); if (nd) { hideHuntPop(); startGather(nd); return; }

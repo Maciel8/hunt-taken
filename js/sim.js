@@ -68,7 +68,8 @@ export function lootMult(p) { let m = 1; if (p.king === "grey") m *= 1.05; if (S
 export function dominant() { const c = { grey: 0, ash: 0, thorn: 0 }; for (const k of Object.values(S.war.owner)) c[k]++; const best = Object.entries(c).sort((a, b) => b[1] - a[1])[0]; return best[1] >= 5 ? best[0] : null; }
 
 export function log(msg, kind) { S.feed.unshift({ t: hhmm(), msg, kind }); if (S.feed.length > 60) S.feed.pop(); emit("feed"); }
-export function clog(msg, kind) { S.clog.unshift({ msg, kind, t: S.t }); if (S.clog.length > 6) S.clog.pop(); }
+// abates seguidos do mesmo monstro viram uma linha só com contador (×N)
+export function clog(msg, kind) { const top = S.clog[0]; if (top && top.msg === msg) { top.n = (top.n || 1) + 1; top.t = S.t; return; } S.clog.unshift({ msg, kind, t: S.t, n: 1 }); if (S.clog.length > 6) S.clog.pop(); }
 export const fx = [];
 
 // ---------- itens ----------

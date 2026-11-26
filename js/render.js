@@ -1,10 +1,10 @@
 // Render: câmera com mola, chão por pedaços, objetos e unidades ordenados pela profundidade, rótulos, minimapa pintado.
-import { T, MW, MH, HUNTS, MONS, KING, ZONES, TOWNS } from "./data.js";
+import { TICK, T, MW, MH, HUNTS, MONS, KING, ZONES, TOWNS } from "./data.js";
 import { objects, huntAt, regionAt, zoneAt, NPCS, ROOMS, interiorAt } from "./world.js";
 import { S, fx, occupantsOf } from "./sim.js";
 import { A, drawGround, drawObject, drawProps, drawMon, drawUnit, CH } from "./art.js";
-import { drawContinent, drawShips, procObjects, drawMiniOverview, cities as contCities, CONT, LOD_ZOOM } from "./continent.js";
-import { OX, OY, SIZE } from "./terrain.js";
+import { drawContinent, drawShips, procObjects, drawMiniOverview, cities as contCities, CONT, LOD_ZOOM, snapDraw } from "./continent.js";
+import { OX, OY, SIZE, OVT } from "./terrain.js";
 import { updateFx, drawFx } from "./fx.js";
 import { NODES, nodeStatus, TOOL_ICON, PROF_VERB } from "./gather.js";
 export const hover = { node: null };
@@ -49,7 +49,7 @@ export function render(dt) {
   cx.save(); cx.setTransform(z, 0, 0, z, -ox * z, -oy * z);
   const far = !room && z < LOD_ZOOM;
   if (!room) drawContinent(cx, ox, oy, WW, WH, S.t || performance.now() / 1000, z);
-  if (far) { cx.imageSmoothingEnabled = true; if (CONT.heartMid) cx.drawImage(CONT.heartMid, 0, 0, MW * T, MH * T); cx.imageSmoothingEnabled = false; }   // longe: o coração vira a pintura
+  if (far) { cx.imageSmoothingEnabled = false; if (CONT.heartLod) snapDraw(cx, CONT.heartLod, 0, 0, MW * T, MH * T); }   // longe: o coração vira a pintura
   else drawGround(cx, ox, oy, WW, WH);
   if (!room) drawShips(cx, performance.now() / 1000);
   const tx0 = Math.floor(ox / T) - 2, ty0 = Math.floor(oy / T) - 2, tx1 = Math.ceil((ox + WW) / T) + 2, ty1 = Math.ceil((oy + WH) / T) + 6;
@@ -72,6 +72,8 @@ export function render(dt) {
   // rótulos em coordenadas de tela
   const sx = v => (v - ox) * z, sy = v => (v - oy) * z;
   if (z >= .08) for (const t of TOWNS) { const x = sx((t.tx + .5) * T), y = sy(t.ty * T - 70); if (x > -80 && x < VW + 80 && y > -20 && y < VH + 80) label(t.name, x, y, t.zone === "segura" ? "#a8cc93" : "#cdb6ef", 12); }
+  // nomes dos prédios principais das cidades (de perto)
+  if (!room && z >= .45) for (const o of procObjects(tx0, ty0, tx1, ty1)) if (o.label) { const x = sx((o.x + .5) * T), y = sy((o.y - (o.fh || 2) - 1.6) * T); if (x > -80 && x < VW + 80 && y > -20 && y < VH + 20) label(o.label, x, y, "#f3ead6", 10); }
   for (const c of contCities()) { if (c.heart) continue; const x = sx((c.x + .5) * T), y = sy((c.y - 4) * T); if (x > -120 && x < VW + 120 && y > -20 && y < VH + 80) label(c.name, x, y, "#ffe6a8", 14); }
   if (cam.zoom >= .25) for (const h of HUNTS) { const x = sx((h.cx + .5) * T), y = sy((h.cy - h.r) * T) + 4; if (x < -100 || x > VW + 100 || y < -20 || y > VH + 40) continue; const o = occupantsOf(h.id).length; label(`${h.name} · lv ${MONS[h.mon].lvl}${o ? " · " + o + " online" : ""}`, x, y, "#fff6e8", 11); }
   if (cam.zoom >= .4) for (const n of NPCS) { const x = sx((n.x + .5) * T), y = sy((n.y + .5) * T - 38); if (x > -40 && x < VW + 40 && y > -10 && y < VH + 40) label(`NPC · ${n.title}`, x, y, "#ffd27a", 10, "rgba(60,40,10,.85)"); }
@@ -103,15 +105,21 @@ export function render(dt) {
   }
   // log de combate
   cx.font = "700 11px Nunito"; cx.textAlign = "left";
-  S.clog.slice(0, 4).forEach((l, i) => { const y = VH - 12 - i * 18; const w = cx.measureText(l.msg).width + 12; cx.fillStyle = "rgba(14,10,18,.7)"; cx.fillRect(8, y - 12, w, 16); cx.fillStyle = l.kind === "kill" ? "#ffe6a8" : "#cfd6e0"; cx.fillText(l.msg, 14, y); });
+  // kill feed: acima da barra de coleta (72 px do fundo, 16 px da esquerda), no máximo 4 linhas, as mais antigas
+  // mais apagadas e somem com o tempo; não intercepta clique (é desenhado no canvas)
+  { const dpr = cv.width / Math.max(1, cv.getBoundingClientRect().width), base = VH - 72 * dpr, lh = 18 * dpr; cx.font = `700 ${Math.round(11 * dpr)}px Nunito`; let row = 0;
+    for (const l of S.clog.slice(0, 4)) { const age = (S.t - (l.t || 0)) * TICK / 1000, a = [1, .75, .5, .3][row] * Math.max(0, Math.min(1, 1 - (age - 6) / 3)); if (a <= 0.02) continue;
+      const txt = l.n > 1 ? `${l.msg} (×${l.n})` : l.msg, y = base - row * lh, w = cx.measureText(txt).width + 12 * dpr; cx.globalAlpha = a;
+      cx.fillStyle = "rgba(14,10,18,.72)"; cx.fillRect(16 * dpr, y - 12 * dpr, w, 16 * dpr); cx.fillStyle = l.kind === "kill" ? "#ffe6a8" : "#cfd6e0"; cx.fillText(txt, 22 * dpr, y); row++; }
+    cx.globalAlpha = 1; }
 }
 // minimapa do continente: recorte do mapa-múndi em volta do centro da câmera; a pintura do coração por cima em alta
 export const mini = { span: 700, cx: 0, cy: 0 };
 function drawMini(mx, my, ccx, ccy, WW, WH, P) {
   const span = Math.min(10000, Math.max(mini.span, WW / T * 1.6, WH / T * 1.6 * MINI.w / MINI.h)), h = span * MINI.h / MINI.w, kx = MINI.w / span, ky = MINI.h / h; const x0 = ccx / T - span / 2, y0 = ccy / T - h / 2; mini.cx = x0; mini.cy = y0; mini.used = span;
   cx.save(); cx.beginPath(); cx.rect(mx, my, MINI.w, MINI.h); cx.clip(); cx.fillStyle = "#12233f"; cx.fillRect(mx, my, MINI.w, MINI.h);
-  cx.imageSmoothingEnabled = true; cx.drawImage(CONT.overview, (x0 + OX) / 10, (y0 + OY) / 10, span / 10, h / 10, mx, my, MINI.w, MINI.h);
-  if (CONT.heartMid) cx.drawImage(CONT.heartMid, mx - x0 * kx, my - y0 * ky, MW * kx, MH * ky); cx.imageSmoothingEnabled = false;
+  cx.imageSmoothingEnabled = true; if (CONT.overview) cx.drawImage(CONT.overview, (x0 + OX) / OVT, (y0 + OY) / OVT, span / OVT, h / OVT, mx, my, MINI.w, MINI.h);
+  if (CONT.heartLod && span < 2500) cx.drawImage(CONT.heartLod, mx - x0 * kx, my - y0 * ky, MW * kx, MH * ky); cx.imageSmoothingEnabled = false;
   const tx = x => mx + (x - x0) * kx, ty = y => my + (y - y0) * ky, inside = (x, y) => x > mx && x < mx + MINI.w && y > my && y < my + MINI.h;
   for (const c of contCities()) { if (c.heart) continue; const x = tx(c.x), y = ty(c.y); if (!inside(x, y)) continue; cx.fillStyle = "#ffe6a8"; cx.strokeStyle = "#171522"; cx.lineWidth = 1.5; cx.beginPath(); cx.moveTo(x, y - 5); cx.lineTo(x + 4, y + 3); cx.lineTo(x - 4, y + 3); cx.closePath(); cx.fill(); cx.stroke();
     if (span <= 3000) { cx.font = "800 9px Nunito, sans-serif"; cx.textAlign = "center"; cx.lineWidth = 3; cx.strokeStyle = "rgba(10,8,14,.85)"; cx.strokeText(c.name, x, y - 7); cx.fillStyle = "#fff6e8"; cx.fillText(c.name, x, y - 7); } }

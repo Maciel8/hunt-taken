@@ -2,6 +2,7 @@
 // Raster em unidades de desenho (1200x800, 4 por tile = 8 px por unidade) dá bordas orgânicas; colisão, regiões e objetos ficam por tile.
 import { MW, MH, MHA, IY, IYR, HUNTS, REGIONS, CAPITAL, TOWNS, ZONES } from "./data.js";
 import { procWalk, procRegion, procZone, findPathWide, isRoadProc } from "./continent.js";
+import { NET as TNET } from "./terrain.js";
 import { DW, DH, UPT, REG, RIVERS, LAKES, LAKE_POLYS, ROADS, BRIDGES, FARMS, riverCurves, HEART_EXITS } from "./geo.js";
 
 export const hash = (x, y) => { let h = (x * 374761393 + y * 668265263) ^ 0x5bd1e995; h = (h ^ (h >>> 13)) * 1274126177; return (h ^ (h >>> 16)) >>> 0; };
@@ -116,6 +117,7 @@ export function buildWorld() {
   scatter();
   ensureReachable();
   carveExits();
+  addCityRooms();
   buildInteriors();
 }
 
@@ -365,12 +367,17 @@ export const DG_ROOMS = [
 export const DOORS = [];       // {room, outside:{x,y}, inside:{x,y}}
 export const GATES = [];       // portões da masmorra: {stage, tiles:[[x,y]...]}
 export const interiorAt = (x, y) => { if (y < IY) return null; for (const [id, r] of Object.entries(ROOMS)) if (x >= r.x && x < r.x + r.w && y >= r.y && y < r.y + r.h) return id; return null; };
+// interiores das cidades do continente (taverna e salão de cada uma), numa fileira abaixo das salas do coração
+function addCityRooms() {
+  (TNET.rooms || []).forEach((rm, i) => { if (ROOMS[rm.id]) return; const tav = rm.kind === "taverna";
+    ROOMS[rm.id] = { name: rm.name, x: 6 + i * 29, y: IY + 38, w: 18, h: 12, floor: tav ? "wood" : "stone_floor", wall: tav ? "wood" : "stone", outside: { x: rm.outside.x, y: rm.outside.y - 1 }, cityKind: rm.kind }; });
+}
 function buildInteriors() {
   for (const [id, r] of Object.entries(ROOMS)) {
     for (let y = r.y + 1; y < r.y + r.h - 1; y++) for (let x = r.x + 1; x < r.x + r.w - 1; x++) block[idx(x, y)] = 0;
     for (let x = r.x; x < r.x + r.w; x++) { put({ x, y: r.y, kind: "iwall", style: r.wall, top: true }); if (x !== r.x + Math.floor(r.w / 2) || r.dungeon) put({ x, y: r.y + r.h - 1, kind: "iwall", style: r.wall, low: true }); }
     for (let y = r.y + 1; y < r.y + r.h - 1; y++) { put({ x: r.x, y, kind: "iwall", style: r.wall, side: true }); put({ x: r.x + r.w - 1, y, kind: "iwall", style: r.wall, side: true }); }
-    const out = objects.find(o => o.door === id);
+    const out = objects.find(o => o.door === id) || r.outside;
     const exit = r.dungeon ? { x: r.x + 3, y: r.y + Math.floor(r.h / 2) } : { x: r.x + Math.floor(r.w / 2), y: r.y + r.h - 2 };
     if (out) DOORS.push({ room: id, outside: { x: out.x, y: out.y + 1 }, inside: exit });
     put({ x: exit.x, y: r.dungeon ? exit.y : exit.y + 1, kind: "exit", solid: false, room: id });
@@ -378,6 +385,8 @@ function buildInteriors() {
   const F = (room, list) => { const r = ROOMS[room]; for (const [dx, dy, sp, fw = 1, fh = 1, solid = true] of list) put({ x: r.x + dx, y: r.y + dy, kind: "furn", sprite: sp, fw, fh, solid }); };
   F("taverna", [[3, 2, "bar", 4, 1], [8, 2, "barrel_rack", 2, 1], [13, 2, "fireplace", 2, 1], [4, 6, "table", 2, 1], [3, 6, "chair"], [6, 6, "chair"], [10, 7, "table", 2, 1], [9, 7, "chair"], [12, 7, "chair"], [14, 6, "table", 2, 1], [15, 9, "plant"], [2, 9, "crate_stack"], [9, 4, "rug", 1, 1, false]]);
   F("forte", [[13, 3, "throne", 2, 1], [9, 2, "banner"], [17, 2, "banner"], [3, 3, "weapon_rack", 2, 1], [22, 3, "weapon_rack", 2, 1], [6, 8, "candle"], [20, 8, "candle"], [6, 12, "candle"], [20, 12, "candle"], [12, 9, "table", 2, 1], [3, 13, "chest_big"], [22, 13, "bookshelf", 2, 1], [13, 6, "rug", 1, 1, false]]);
+  for (const [id, r] of Object.entries(ROOMS)) { if (r.cityKind === "taverna") F(id, [[3, 2, "bar", 4, 1], [8, 2, "barrel_rack", 2, 1], [13, 2, "fireplace", 2, 1], [4, 6, "table", 2, 1], [3, 6, "chair"], [6, 6, "chair"], [10, 7, "table", 2, 1], [9, 7, "chair"], [12, 7, "chair"], [14, 6, "table", 2, 1], [15, 9, "plant"], [2, 9, "barrel"]]);
+    if (r.cityKind === "salao") F(id, [[8, 2, "throne", 2, 1], [4, 2, "banner"], [13, 2, "banner"], [2, 3, "weapon_rack", 2, 1], [14, 3, "bookshelf", 2, 1], [5, 6, "candle"], [12, 6, "candle"], [8, 6, "table", 2, 1], [2, 9, "chest_big"], [15, 9, "statue"]]); }
   F("celeiro", [[2, 2, "haystack"], [3, 2, "haystack"], [12, 2, "haystack"], [6, 3, "cart", 2, 1], [2, 7, "crate_stack"], [13, 7, "barrel_rack", 2, 1], [9, 6, "haystack"]]);
   // masmorra: paredes entre salas com portão; lava na sala 2 com ponte
   const r = ROOMS.dragao;
