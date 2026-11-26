@@ -72,7 +72,7 @@ function indexSeg(kind, a, b, w, extra) { const x0 = Math.floor((Math.min(a[0], 
 export function initNet(net) {
   Object.assign(NET, net, { ready: true, grid: new Map(), clear: null, clearBuilt: false });
   for (const r of NET.rivers) for (let i = 1; i < r.pts.length; i++) indexSeg("river", r.pts[i - 1], r.pts[i], r.w[i]);
-  for (const r of NET.roads) for (let i = 1; i < r.pts.length; i++) indexSeg("road", r.pts[i - 1], r.pts[i], 1.35);
+  for (const r of NET.roads) for (let i = 1; i < r.pts.length; i++) indexSeg("road", r.pts[i - 1], r.pts[i], 1.25);
   for (const c of NET.cities) indexSeg("city", [c.x, c.y], [c.x, c.y], c.plaza + 2, { city: c });
   for (const p of NET.ports || []) for (const d of p.docks) indexSeg("dock", d[0], d[1], 1.1);
   for (const l of NET.lakes || []) indexSeg("lake", [l.x, l.y], [l.x, l.y], l.r);
@@ -93,7 +93,7 @@ function heartSeam(x, y) {
   return { b: HEART_BIOME[t[2]], d };
 }
 // tile final num ponto local: oceano/costa/bioma + costura com o coração + rio/lago/estrada/ponte/cidade/docas
-export function tileAt(x, y) {
+export function tileAt(x, y, ground = false) {
   if (x >= HEART.x && y >= HEART.y && x < HEART.x + HEART.w && y < HEART.y + HEART.h) return B.HEART;
   const gx = x + OX, gy = y + OY; let b = baseBiome(gx, gy);
   const seam = heartSeam(x, y);
@@ -101,9 +101,9 @@ export function tileAt(x, y) {
   if (!NET.ready) return b;
   const cell = NET.grid.get(Math.floor(x / GCELL) + "," + Math.floor(y / GCELL));
   if (cell) {
-    let river = false, road = false, dock = false, city = null, lake = false;
+    let river = false, riverNear = false, road = false, dock = false, city = null, lake = false;
     for (const s of cell) { const d = segDist(x + .5, y + .5, s.a, s.b);
-      if (s.kind === "river" && d < s.w + (fbm(gx / 9, gy / 9, 2, SEED + 31) - .5) * .8) river = true;
+      if (s.kind === "river") { if (d < s.w) river = true; if (d < s.w + .7) riverNear = true; }
       else if (s.kind === "road" && d < s.w) road = true;
       else if (s.kind === "dock" && d < s.w) dock = true;
       else if (s.kind === "lake" && d < s.w + (fbm(gx / 11, gy / 11, 2, SEED + 41) - .5) * 4) lake = true;
@@ -111,12 +111,15 @@ export function tileAt(x, y) {
     if (dock) return B.DOCK;
     if (city) return B.CITY;
     if (lake && !road) return B.LAKE;
-    if (road) return (river || b === B.LAKE || b === B.MURKY || b === B.SHALLOW) ? B.BRIDGE : (b === B.PEAK || b === B.LAVA ? B.ROAD : B.ROAD);
+    if (ground) return b;
+    if (road) return (riverNear || b === B.LAKE || b === B.MURKY || b === B.SHALLOW) ? B.BRIDGE : B.ROAD;
     if (river && b !== B.DEEP && b !== B.OCEAN) return b === B.TUNDRA || b === B.GLACIER ? B.ICE : B.RIVER;
   }
   return b;
 }
 // grade de tiles de um pedaço (com 1 tile de borda pra transições): (CHUNK+2)²
+export function chunkGround(cx, cy) { const n = CHUNK + 2, t = new Uint8Array(n * n), x0 = cx * CHUNK - 1, y0 = cy * CHUNK - 1; for (let j = 0; j < n; j++) for (let i = 0; i < n; i++) t[j * n + i] = tileAt(x0 + i, y0 + j, true); return t; }
+export function segsNear(x0, y0, x1, y1) { const out = new Set(); for (let y = Math.floor(y0 / GCELL); y <= Math.floor(y1 / GCELL); y++) for (let x = Math.floor(x0 / GCELL); x <= Math.floor(x1 / GCELL); x++) for (const s of NET.grid.get(x + "," + y) || []) if (s.kind === "river" || s.kind === "road") out.add(s); return [...out]; }
 export function chunkTiles(cx, cy) { const n = CHUNK + 2, t = new Uint8Array(n * n), x0 = cx * CHUNK - 1, y0 = cy * CHUNK - 1; for (let j = 0; j < n; j++) for (let i = 0; i < n; i++) t[j * n + i] = tileAt(x0 + i, y0 + j); return t; }
 
 // ---------- anéis irregulares em volta das cidades ----------
@@ -144,6 +147,11 @@ function clearAt(x, y) {
     for (const n of NET.nodes || []) for (let dy = -2; dy <= 2; dy++) for (let dx = -2; dx <= 2; dx++) c.set((n.x + dx) + "," + (n.y + dy), 1); }
   return c.has(x + "," + y);
 }
+const DECOR = { [B.PLAINS]: { p: .07, s: ["bush", "bush2", "flower_red", "flower_yellow", "flower_yellow2", "mushroom_red", "berry_bush"] }, [B.FIELD]: { p: .06, s: ["bush", "flower_yellow", "flower_yellow2", "hay"] },
+  [B.FOREST]: { p: .09, s: ["bush_dark", "bush_dark2", "mushroom", "stump", "log", "bush"] }, [B.ANCIENT]: { p: .09, s: ["bush_dark", "bush_dark2", "mushroom", "moss_rock", "stump"] },
+  [B.SWAMP]: { p: .08, s: ["reed", "cattail", "dead_shrub", "mushroom"] }, [B.MANGROVE]: { p: .08, s: ["reed", "cattail", "bush_dark"] }, [B.DESERT]: { p: .025, s: ["dead_shrub", "bone_pile", "skull"] },
+  [B.CANYON]: { p: .03, s: ["dead_shrub", "moss_rock2"] }, [B.MOUNTAIN]: { p: .05, s: ["moss_rock", "moss_rock2", "pine_small"] }, [B.TUNDRA]: { p: .04, s: ["pine_small", "moss_rock"], t: "snow" },
+  [B.VOLCANIC]: { p: .03, s: ["dead_shrub", "bone"] }, [B.DARK]: { p: .05, s: ["dead_shrub", "bone", "skull", "bone_pile"] }, [B.BEACH]: { p: .012, s: ["dead_shrub"] } };
 export function chunkObjects(cx, cy, tiles) {
   const out = [], n = CHUNK + 2; tiles = tiles || chunkTiles(cx, cy);
   for (let j = 1; j <= CHUNK; j++) for (let i = 1; i <= CHUNK; i++) {
@@ -154,6 +162,12 @@ export function chunkObjects(cx, cy, tiles) {
     let near = false; for (const o of [tiles[j * n + i - 1], tiles[j * n + i + 1], tiles[(j - 1) * n + i], tiles[(j + 1) * n + i]]) if (o === B.ROAD || o === B.BRIDGE || o === B.CITY || o === B.RIVER || o === B.DOCK || isBlocked(o)) near = true; if (near) continue;
     const r = hashTile(x, y, 3); let acc = 0;
     for (const [sp, p, tint, big] of list) { acc += p; if (r < acc) { const kind = sp === "palm" || sp === "cactus" ? sp : sp === "ruinwall" ? "ruinwall" : sp === "boulder" ? "tree" : "tree"; out.push({ x, y, kind, sprite: sp, tint: tint || null, big: big || (sp === "pine" || sp === "oak" ? .9 + hashTile(x, y, 5) * .35 : 1), solid: true, proc: true }); break; } }
+  }
+  // enfeites do chão (sem colisão), mesma família de sprites do coração
+  for (let j = 1; j <= CHUNK; j++) for (let i = 1; i <= CHUNK; i++) {
+    const b = tiles[j * n + i], list = DECOR[b]; if (!list) continue; const x = cx * CHUNK + i - 1, y = cy * CHUNK + j - 1, r = hashTile(x, y, 8);
+    if (r > list.p) continue; if (x > HEART.x - 2 && y > HEART.y - 2 && x < HEART.x + HEART.w + 1 && y < HEART.y + HEART.h + 1) continue;
+    const sp = list.s[Math.floor(hashTile(x, y, 9) * list.s.length)]; out.push({ x, y, kind: "tree", sprite: sp, tint: list.t || null, big: .8 + hashTile(x, y, 10) * .3, solid: false, decor: true, proc: true });
   }
   // construções das cidades (geradas sobre o calçamento)
   if (NET.ready) for (const c of NET.cities) for (const o of c.buildings || []) if (Math.floor(o.x / CHUNK) === cx && Math.floor(o.y / CHUNK) === cy) out.push({ ...o, proc: true, solid: o.solid !== false });

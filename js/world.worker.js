@@ -1,131 +1,118 @@
 // Web Worker: desenha os pedaços do continente (32×32 tiles) fora da thread principal.
-// Cache L2: IndexedDB (PNG por pedaço, por versão do build). O jogo guarda o resultado como ImageBitmap (cache L1).
-// Transição entre biomas sem corte reto: cada pixel escolhe o tile por uma posição deformada por ruído (franjas orgânicas),
-// espuma onde a água encosta na terra, decoração (tufos, flores, pedrinhas) e uma camada separada de ondas.
-import { initNet, chunkTiles, B, CHUNK, OX, OY, vnoise, hashTile, isWater, BIOME_RGB } from "./terrain.js";
-const PX = 16;                       // pixels por tile no pedaço (desenhado 2× na tela)
-const N = CHUNK * PX;                // 512
-let TEX = {}, VERSION = "dev", db = null;
+// Mesmas texturas e escala do mapa original (1 texel = 1 px de mundo no nível "hi"); estradas e rios por distância
+// exata até a linha (bordas suaves, margem de terra e grama, ponte de tábuas), como o art.js desenha no coração.
+// Níveis: hi = 32 px/tile (zoom perto), mid = 8 px/tile (zoom médio, texturas reduzidas), lod = 1 px/tile (bem longe).
+// Cache L2: IndexedDB (WebP por pedaço e nível, por versão do build).
+import { initNet, chunkTiles, chunkGround, segsNear, B, CHUNK, OX, OY, vnoise, hashTile, isWater, BIOME_RGB, NET } from "./terrain.js";
+const T = 32;
+let TEX = {}, MIP = {}, VERSION = "dev", db = null;
 
-// ---------- texturas (vêm do jogo como ImageData; recolor igual ao art.js) ----------
-const lum = (r, g, b) => .3 * r + .59 * g + .11 * b;
-function recolor(src, fn) { const d = new Uint8ClampedArray(src.data); for (let i = 0; i < d.length; i += 4) { const [r, g, b] = fn(d[i], d[i + 1], d[i + 2]); d[i] = r; d[i + 1] = g; d[i + 2] = b; } return { w: src.w, h: src.h, data: d }; }
-function buildTex(base) {
-  const t = { ...base };
-  t.grass_gold = recolor(base.grass, (r, g, b) => [r + (170 - r) * .35, g + (160 - g) * .15, b * .7]);
-  t.ancient = recolor(base.grass_dark, (r, g, b) => [r * .6 + 18, g * .9 + 14, b * .7 + 26]);
-  t.swamp_red = recolor(base.swamp, (r, g, b) => { const l = lum(r, g, b); return [l * .62 + 34, l * .4 + 16, l * .34 + 14]; });
-  t.dirt = recolor(base.sand, (r, g, b) => { const l = lum(r, g, b); return [l * .72 + 22, l * .56 + 14, l * .36 + 8]; });
-  t.sand_light = recolor(base.sand, (r, g, b) => [r * .95 + 14, g * .95 + 12, b * .9 + 10]);
-  t.canyon = recolor(base.sand, (r, g, b) => { const l = lum(r, g, b); return [l * .85 + 40, l * .5 + 18, l * .32 + 6]; });
-  t.stone_dark = recolor(base.rock, (r, g, b) => [r * .55, g * .5, b * .52]);
-  t.ice = recolor(base.snow, (r, g, b) => [r * .78, g * .88, b]);
-  t.dark = recolor(base.grass_dark, (r, g, b) => { const l = lum(r, g, b); return [l * .55 + 30, l * .4 + 18, l * .8 + 40]; });
-  t.plaza = recolor(base.cobble, (r, g, b) => { const l = lum(r, g, b); return [l * .9 + 40, l * .85 + 30, l * .75 + 18]; });
-  return t;
-}
-const TEX_OF = { [B.BEACH]: "sand_light", [B.CLIFF]: "rock", [B.PLAINS]: "grass", [B.FIELD]: "grass_gold", [B.FOREST]: "grass_dark", [B.ANCIENT]: "ancient", [B.SWAMP]: "swamp_red", [B.MANGROVE]: "swamp",
-  [B.DESERT]: "sand", [B.CANYON]: "canyon", [B.MOUNTAIN]: "rock", [B.PEAK]: "rock", [B.VOLCANIC]: "stone_dark", [B.TUNDRA]: "snow", [B.GLACIER]: "ice", [B.ICE]: "ice", [B.DARK]: "dark", [B.ROAD]: "dirt", [B.CITY]: "plaza" };
-const WATER_RGB = { [B.DEEP]: [16, 34, 70], [B.OCEAN]: [26, 58, 106], [B.SHALLOW]: [48, 110, 150], [B.LAKE]: [44, 104, 156], [B.RIVER]: [52, 116, 166], [B.MURKY]: [66, 70, 48] };
-// cor média de cada textura (o chão do continente é procedural: média + ruído em 3 escalas, sem a grade das texturas)
-const MEAN = {};
-function meanOf(name) { if (MEAN[name]) return MEAN[name]; const t = TEX[name] || TEX.grass; let r = 0, g = 0, b = 0, n = 0; for (let i = 0; i < t.data.length; i += 16) { r += t.data[i]; g += t.data[i + 1]; b += t.data[i + 2]; n++; } return MEAN[name] = [r / n, g / n, b / n]; }
-// tons ajustados pra ficar menos saturado que a textura crua
-const TONE = { dirt: [1.02, 1, .98], grass: [.86, .92, .8], grass_gold: [1, .96, .84], grass_dark: [.9, .95, .9], ancient: [.95, 1, 1], snow: [1, 1, 1], ice: [1, 1, 1] };
-function groundPx(name, gx, gy, px, py) {
-  const m = meanOf(name), k = TONE[name] || [1, 1, 1];
-  const n1 = vnoise(gx / 7, gy / 7, 601) - .5, n2 = vnoise(gx / 1.6, gy / 1.6, 603) - .5, sp = hashTile(px, py, 605) - .5;
-  const f = 1 + n1 * .22 + n2 * .14 + sp * .1;
-  return [m[0] * k[0] * f, m[1] * k[1] * f, m[2] * k[2] * f];
-}
-// 0 colado no coração → 1 a partir de 28 tiles (com franja irregular)
-function heartNear(x, y) { const dx = Math.max(-x, 0, x - 300), dy = Math.max(-y, 0, y - 200), d = Math.hypot(dx, dy) + (vnoise(x / 6, y / 6, 611) - .5) * 8; return Math.max(0, Math.min(1, d / 28)); }
-function texPx(name, x, y) { const t = TEX[name] || TEX.grass; const tx = ((x % t.w) + t.w) % t.w, ty = ((y % t.h) + t.h) % t.h, i = (ty * t.w + tx) * 4; return [t.data[i], t.data[i + 1], t.data[i + 2]]; }
+// ---------- texturas (vêm do jogo, já recoloridas pelo art.js) ----------
+function mip(t, f) { const w = Math.max(1, t.w / f | 0), h = Math.max(1, t.h / f | 0), d = new Uint8ClampedArray(w * h * 4);
+  for (let y = 0; y < h; y++) for (let x = 0; x < w; x++) { let r = 0, g = 0, b = 0; for (let j = 0; j < f; j++) for (let i = 0; i < f; i++) { const k = ((y * f + j) * t.w + x * f + i) * 4; r += t.data[k]; g += t.data[k + 1]; b += t.data[k + 2]; }
+    const o = (y * w + x) * 4, n = f * f; d[o] = r / n; d[o + 1] = g / n; d[o + 2] = b / n; d[o + 3] = 255; } return { w, h, data: d }; }
+const TEX_OF = { [B.BEACH]: "sand", [B.CLIFF]: "rock", [B.PLAINS]: "grass", [B.FIELD]: "grass_gold", [B.FOREST]: "grass_dark", [B.ANCIENT]: "grass_dark", [B.SWAMP]: "swamp_red", [B.MANGROVE]: "swamp",
+  [B.DESERT]: "sand", [B.CANYON]: "earth", [B.MOUNTAIN]: "stone_dark", [B.PEAK]: "rock", [B.VOLCANIC]: "stone_dark", [B.TUNDRA]: "snow", [B.GLACIER]: "snow", [B.ICE]: "snow", [B.DARK]: "ruins",
+  [B.ROAD]: "dirt", [B.BRIDGE]: "dirt", [B.CITY]: "plaza", [B.LAVA]: "lava", [B.DOCK]: "bridge", [B.LAKE]: "water", [B.RIVER]: "water", [B.MURKY]: "swamp" };
+// tons por bioma sobre a textura (o coração usa as mesmas texturas; aqui só diferencia biomas que não existem lá)
+const TONE = { [B.ANCIENT]: [.85, .95, 1.05], [B.VOLCANIC]: [.62, .55, .55], [B.GLACIER]: [.9, .97, 1.06], [B.ICE]: [.82, .92, 1.08], [B.PEAK]: [.85, .85, .9], [B.MURKY]: [.7, .75, .55] };
+function tex(name, f, x, y) { const t = f === 1 ? TEX[name] : (MIP[name] && MIP[name][f]); if (!t) return [120, 160, 80]; const tx = ((x % t.w) + t.w) % t.w, ty = ((y % t.h) + t.h) % t.h, i = (ty * t.w + tx) * 4; return [t.data[i], t.data[i + 1], t.data[i + 2]]; }
+const OCEAN = { [B.DEEP]: [16, 34, 70], [B.OCEAN]: [26, 58, 106], [B.SHALLOW]: [48, 110, 150] };
+function segD(px, py, a, b) { const dx = b[0] - a[0], dy = b[1] - a[1], L = dx * dx + dy * dy; let t = L ? ((px - a[0]) * dx + (py - a[1]) * dy) / L : 0; t = t < 0 ? 0 : t > 1 ? 1 : t; return Math.hypot(px - a[0] - t * dx, py - a[1] - t * dy); }
 
 // ---------- desenho de um pedaço ----------
-function renderChunk(cx, cy) {
-  const tiles = chunkTiles(cx, cy), n = CHUNK + 2;
-  const img = new ImageData(N, N), d = img.data, wav = new ImageData(N / 2, N / 2), wd = wav.data;
-  const gx0 = cx * CHUNK + OX, gy0 = cy * CHUNK + OY;
-  // deformação calculada a cada 4 px e interpolada (rápido)
-  const S = 4, GW = N / S + 1, wx = new Float32Array(GW * GW), wy = new Float32Array(GW * GW);
-  for (let j = 0; j < GW; j++) for (let i = 0; i < GW; i++) { const fx = gx0 + i * S / PX, fy = gy0 + j * S / PX;
+function renderChunk(cx, cy, PX) {
+  const N = CHUNK * PX, f = T / PX;                       // f: quantos px de mundo cada pixel cobre (1 no hi, 4 no mid)
+  const ground = chunkGround(cx, cy), n = CHUNK + 2;
+  const img = new ImageData(N, N), d = img.data;
+  const gx0 = cx * CHUNK + OX, gy0 = cy * CHUNK + OY, tx0 = cx * CHUNK, ty0 = cy * CHUNK;
+  const segs = segsNear(tx0 - 4, ty0 - 4, tx0 + CHUNK + 4, ty0 + CHUNK + 4);
+  const rivers = segs.filter(s => s.kind === "river"), roads = segs.filter(s => s.kind === "road");
+  // deformação das bordas entre biomas (amostrada numa grade e interpolada)
+  const STEP = Math.max(2, PX / 4), GW = Math.ceil(N / STEP) + 2, wx = new Float32Array(GW * GW), wy = new Float32Array(GW * GW);
+  for (let j = 0; j < GW; j++) for (let i = 0; i < GW; i++) { const fx = gx0 + i * STEP / PX, fy = gy0 + j * STEP / PX;
     wx[j * GW + i] = (vnoise(fx * .9, fy * .9, 501) - .5) * .95 + (vnoise(fx * 3.3, fy * 3.3, 503) - .5) * .4;
     wy[j * GW + i] = (vnoise(fx * .9, fy * .9, 502) - .5) * .95 + (vnoise(fx * 3.3, fy * 3.3, 504) - .5) * .4; }
-  const tileOf = (fx, fy) => { const ix = Math.max(0, Math.min(n - 1, Math.floor(fx) + 1)), iy = Math.max(0, Math.min(n - 1, Math.floor(fy) + 1)); return tiles[iy * n + ix]; };
+  const at = (fx, fy) => { const ix = Math.max(0, Math.min(n - 1, Math.floor(fx) + 1)), iy = Math.max(0, Math.min(n - 1, Math.floor(fy) + 1)); return ground[iy * n + ix]; };
+  // distância a rios/estradas calculada numa grade (2 px no hi) e interpolada: rápido e liso
+  const DS = PX >= 16 ? 4 : 1, DW = Math.ceil(N / DS) + 2, dRiv = rivers.length ? new Float32Array(DW * DW) : null, dRoad = roads.length ? new Float32Array(DW * DW) : null;
+  for (let j = 0; j < DW; j++) for (let i = 0; i < DW; i++) { const x = tx0 + i * DS / PX, y = ty0 + j * DS / PX;
+    if (dRiv) { let e = 9; for (const s of rivers) { const v = segD(x, y, s.a, s.b) - s.w; if (v < e) e = v; } dRiv[j * DW + i] = e; }
+    if (dRoad) { let e = 9; for (const s of roads) { const v = segD(x, y, s.a, s.b); if (v < e) e = v; } dRoad[j * DW + i] = e; } }
+  const lerpG = (G, px, py) => { const gi = px / DS, gj = py / DS, i0 = Math.min(DW - 2, gi | 0), j0 = Math.min(DW - 2, gj | 0), ti = gi - i0, tj = gj - j0, k = j0 * DW + i0;
+    return (G[k] * (1 - ti) + G[k + 1] * ti) * (1 - tj) + (G[k + DW] * (1 - ti) + G[k + DW + 1] * ti) * tj; };
+  // cidade perto deste pedaço (ruas de pedra sobre grama, como a Vila de Arken)
+  const city = NET.cities.find(c => !c.heart && Math.abs(c.x - (tx0 + CHUNK / 2)) < c.plaza + CHUNK && Math.abs(c.y - (ty0 + CHUNK / 2)) < c.plaza + CHUNK);
   for (let py = 0; py < N; py++) {
-    const gj = py / S, j0 = Math.min(GW - 2, gj | 0), tj = gj - j0;
+    const gj = py / STEP, j0 = Math.min(GW - 2, gj | 0), tj = gj - j0;
     for (let px = 0; px < N; px++) {
-      const gi = px / S, i0 = Math.min(GW - 2, gi | 0), ti = gi - i0, k = j0 * GW + i0;
+      const gi = px / STEP, i0 = Math.min(GW - 2, gi | 0), ti = gi - i0, k = j0 * GW + i0;
       const ox = (wx[k] * (1 - ti) + wx[k + 1] * ti) * (1 - tj) + (wx[k + GW] * (1 - ti) + wx[k + GW + 1] * ti) * tj;
       const oy = (wy[k] * (1 - ti) + wy[k + 1] * ti) * (1 - tj) + (wy[k + GW] * (1 - ti) + wy[k + GW + 1] * ti) * tj;
-      const fx = px / PX, fy = py / PX; const own = tileOf(fx, fy);
-      // estrada, ponte, cidade e docas mantêm borda mais firme (só leve ondulação)
-      const firm = own === B.ROAD || own === B.BRIDGE || own === B.CITY || own === B.DOCK;
-      let b = firm ? tileOf(fx + ox * .25, fy + oy * .25) : tileOf(fx + ox, fy + oy);
-      if (b === B.HEART && own !== B.HEART) b = own;   // a deformação não pode abrir buraco na borda do coração
-      const o = (py * N + px) * 4; let r, g, bl, a = 255;
-      const wpx = (cx * N + px) * 2, wpy = (cy * N + py) * 2;    // coordenada da textura (mesma escala do coração)
-      if (b === B.HEART) { a = 0; r = g = bl = 0; }
-      else if (WATER_RGB[b]) {
-        [r, g, bl] = WATER_RGB[b]; const sh = (vnoise((gx0 + fx) * 1.7, (gy0 + fy) * 1.7, 511) - .5) * 18; r += sh; g += sh; bl += sh * 1.2;
-        // espuma onde encosta na terra
-        let shore = false; for (const [dx, dy] of [[.45, 0], [-.45, 0], [0, .45], [0, -.45]]) { const nb = tileOf(fx + ox + dx, fy + oy + dy); if (!isWater(nb) && nb !== B.HEART) { shore = true; break; } }
-        if (shore) { const f = .45 + vnoise((gx0 + fx) * 6, (gy0 + fy) * 6, 513) * .4; r += (235 - r) * f; g += (245 - g) * f; bl += (250 - bl) * f; }
-        if (b !== B.MURKY && hashTile(wpx >> 3, wpy >> 3, 7) > .992) { const wi = ((py >> 1) * (N / 2) + (px >> 1)) * 4; wd[wi] = wd[wi + 1] = wd[wi + 2] = 255; wd[wi + 3] = 150; }
-      } else if (b === B.LAVA) { const h = vnoise((gx0 + fx) * 2.5, (gy0 + fy) * 2.5, 517); r = 200 + h * 55; g = 70 + h * 120; bl = 20; }
-      else if (b === B.BRIDGE || b === B.DOCK) { const plank = (Math.floor(wpy / 6) % 2) ? 0 : 14; r = 128 + plank; g = 90 + plank; bl = 56 + plank / 2; if (wpy % 6 === 0) { r -= 30; g -= 26; bl -= 18; } }
-      else if (TEX_OF[b] && heartNear(cx * CHUNK + fx, cy * CHUNK + fy) < 1 && b !== B.ROAD && b !== B.CITY) {
-        const k = heartNear(cx * CHUNK + fx, cy * CHUNK + fy), t1 = texPx(TEX_OF[b], wpx, wpy), t2 = groundPx(TEX_OF[b], gx0 + fx, gy0 + fy, wpx >> 1, wpy >> 1);
-        r = t1[0] * (1 - k) + t2[0] * k; g = t1[1] * (1 - k) + t2[1] * k; bl = t1[2] * (1 - k) + t2[2] * k; }
-      else { [r, g, bl] = (b === B.CITY || b === B.CLIFF || b === B.MOUNTAIN || b === B.PEAK) ? texPx(TEX_OF[b], wpx >> 1, wpy >> 1) : groundPx(TEX_OF[b] || "grass", gx0 + fx, gy0 + fy, wpx >> 1, wpy >> 1);
-        if (b === B.PEAK) { r *= .78; g *= .78; bl *= .8; }
-        // decoração assada no chão: tufos, flores, pedrinhas, brilho na neve
-        const tx = cx * CHUNK + Math.floor(fx), ty = cy * CHUNK + Math.floor(fy), hx = hashTile(tx, ty, 21), sx = (px % PX), sy = (py % PX);
-        if ((b === B.PLAINS || b === B.FIELD || b === B.FOREST) && hx < .16 && sx > 5 && sx < 10 && sy > 8 && sy < 14) { const m = (sx + sy) % 3 === 0; if (m) { r *= .7; g *= .82; bl *= .7; } }
-        if ((b === B.PLAINS || b === B.FIELD) && hx > .97 && sx >= 7 && sx <= 8 && sy >= 7 && sy <= 8) { const fl = [[236, 220, 90], [220, 90, 90], [240, 240, 250]][Math.floor(hashTile(tx, ty, 22) * 3)]; [r, g, bl] = fl; }
-        if ((b === B.DESERT || b === B.MOUNTAIN || b === B.CANYON || b === B.VOLCANIC) && hx < .06 && sx >= 6 && sx <= 8 && sy >= 9 && sy <= 10) { r *= .65; g *= .62; bl *= .6; }
-        if ((b === B.TUNDRA || b === B.GLACIER) && hx > .98 && sx === 8 && sy === 8) { r = g = bl = 255; }
-        if (b === B.ROAD && hashTile(wpx >> 2, wpy >> 2, 23) > .93) { r *= .86; g *= .84; bl *= .82; }
-      }
-      d[o] = r; d[o + 1] = g; d[o + 2] = bl; d[o + 3] = a;
+      const fx = (px + .5) / PX, fy = (py + .5) / PX, own = at(fx, fy);
+      const firm = own === B.CITY || own === B.DOCK;
+      let b = firm ? at(fx + ox * .25, fy + oy * .25) : at(fx + ox, fy + oy);
+      if (b === B.HEART && own !== B.HEART) b = own;
+      const o = (py * N + px) * 4;
+      if (b === B.HEART) { d[o + 3] = 0; continue; }
+      const wpx = tx0 * (T / f) + px, wpy = ty0 * (T / f) + py;      // coordenada de textura (mesma origem do coração)
+      let r, g, bl;
+      if (OCEAN[b]) { [r, g, bl] = OCEAN[b]; const sh = (vnoise((gx0 + fx) * 1.7, (gy0 + fy) * 1.7, 511) - .5) * 18; r += sh; g += sh; bl += sh * 1.2;
+        let shore = false; for (const [dx, dy] of [[.45, 0], [-.45, 0], [0, .45], [0, -.45]]) { const nb = at(fx + ox + dx, fy + oy + dy); if (!isWater(nb) && nb !== B.HEART) { shore = true; break; } }
+        if (shore) { const fo = .45 + vnoise((gx0 + fx) * 6, (gy0 + fy) * 6, 513) * .4; r += (235 - r) * fo; g += (245 - g) * fo; bl += (250 - bl) * fo; }
+        else if (hashTile(Math.floor(wpx * f / 8), Math.floor(wpy * f / 8), 7) > .996) { r = g = bl = 230; } }
+      else if (b === B.CITY && city) { const dx = tx0 + fx - city.x - .5, dy = ty0 + fy - city.y - .5, rr = Math.hypot(dx, dy);
+        const street = rr < 8.5 || Math.abs(rr - 16.5) < 1.3 || Math.abs(rr - 28.5) < 1.3 || ((Math.abs(dx) < 1.4 || Math.abs(dy) < 1.4) && rr < city.plaza);
+        if (rr < 8.5) [r, g, bl] = tex("plaza", f, wpx, wpy); else if (street) [r, g, bl] = tex("cobble", f, wpx, wpy); else { [r, g, bl] = tex("grass", f, wpx, wpy); r = r * .92 + 8; g = g * .98 + 6; bl *= .85; }
+        if (street && rr >= 8.5) { const edge = Math.min(Math.abs(Math.abs(rr - 16.5) - 1.3), Math.abs(Math.abs(rr - 28.5) - 1.3), Math.abs(Math.abs(dx) - 1.4), Math.abs(Math.abs(dy) - 1.4)); if (edge < .12) { r *= .7; g *= .68; bl *= .66; } } }
+      else { [r, g, bl] = tex(TEX_OF[b] || "grass", f, wpx, wpy); const tn = TONE[b]; if (tn) { r *= tn[0]; g *= tn[1]; bl *= tn[2]; }
+        if (b === B.LAKE) { let shore = 0; for (const [dx, dy] of [[.5, 0], [-.5, 0], [0, .5], [0, -.5]]) { const nb = at(fx + ox + dx, fy + oy + dy); if (!isWater(nb) && nb !== B.HEART) shore = 1; }
+          if (shore) { r = 0x4a; g = 0x7a; bl = 0x3e; } } }
+      // rios: margem de terra, faixa de grama, água, fundo (mesmas medidas e cores do coração)
+      let eRiv = 9; if (dRiv) { eRiv = lerpG(dRiv, px, py);
+        if (eRiv < .69) { if (eRiv > .35) { r = 0x6b; g = 0x52; bl = 0x33; } else if (eRiv > 0) { r = 0x4a; g = 0x7a; bl = 0x3e; } else { [r, g, bl] = tex("water", f, wpx, wpy); if (eRiv < -.33) { r = r * .65 + 7; g = g * .65 + 17.5; bl = bl * .65 + 28; } } } }
+      // estradas: borda escura, terra, franja; em cima de água vira ponte de tábuas
+      if (dRoad) { const dr = lerpG(dRoad, px, py);
+        if (dr < .95) { const wet = eRiv < .69 || isWater(b);
+          if (wet && dr < .9) { [r, g, bl] = tex("bridge", f, wpx, wpy); if (dr > .76) { r *= .55; g *= .5; bl *= .45; } }
+          else if (dr < .75) [r, g, bl] = tex("dirt", f, wpx, wpy);
+          else { const a = dr < .875 ? .35 : 0; if (a) { const t2 = tex("dirt", f, wpx, wpy); r = r * (1 - a) + t2[0] * a; g = g * (1 - a) + t2[1] * a; bl = bl * (1 - a) + t2[2] * a; } r = r * .6 + 20; g = g * .6 + 14; bl = bl * .6 + 7; } } }
+      d[o] = r; d[o + 1] = g; d[o + 2] = bl; d[o + 3] = 255;
     }
   }
-  return { img, wav };
+  return img;
+}
+// nível bem afastado: 1 pixel por tile
+function renderLod(cx, cy) {
+  const tiles = chunkTiles(cx, cy), n = CHUNK + 2, img = new ImageData(CHUNK, CHUNK), d = img.data;
+  for (let j = 0; j < CHUNK; j++) for (let i = 0; i < CHUNK; i++) { const b = tiles[(j + 1) * n + i + 1], o = (j * CHUNK + i) * 4; if (b === B.HEART) { d[o + 3] = 0; continue; }
+    const c = BIOME_RGB[b] || [90, 140, 70], x = cx * CHUNK + i, y = cy * CHUNK + j, fv = .92 + (vnoise(x / 5, y / 5, 621) - .5) * .16 + (hashTile(x, y, 623) - .5) * .06;
+    d[o] = c[0] * fv; d[o + 1] = c[1] * fv; d[o + 2] = c[2] * fv; d[o + 3] = 255; }
+  return img;
 }
 
 // ---------- IndexedDB (cache L2) ----------
-function openDB() { return new Promise(res => { try { const rq = indexedDB.open("ht-chunks", 1); rq.onupgradeneeded = () => { rq.result.createObjectStore("c"); rq.result.createObjectStore("meta"); }; rq.onsuccess = () => res(rq.result); rq.onerror = () => res(null); } catch (e) { res(null); } }); }
-const tx = (store, mode, fn) => new Promise(res => { try { const t = db.transaction(store, mode), s = t.objectStore(store); const r = fn(s); t.oncomplete = () => res(r && r.result); t.onerror = () => res(null); } catch (e) { res(null); } });
-async function idbGet(k) { if (!db) return null; return new Promise(res => { try { const r = db.transaction("c").objectStore("c").get(k); r.onsuccess = () => res(r.result || null); r.onerror = () => res(null); } catch (e) { res(null); } }); }
-async function idbPut(k, v) { if (db) await tx("c", "readwrite", s => s.put(v, k)); }
+function openDB() { return new Promise(res => { try { const rq = indexedDB.open("ht-chunks", 2); rq.onupgradeneeded = () => { for (const s of ["c", "meta"]) if (!rq.result.objectStoreNames.contains(s)) rq.result.createObjectStore(s); }; rq.onsuccess = () => res(rq.result); rq.onerror = () => res(null); } catch (e) { res(null); } }); }
+const txn = (store, mode, fn) => new Promise(res => { try { const t = db.transaction(store, mode), s = t.objectStore(store); fn(s); t.oncomplete = () => res(true); t.onerror = () => res(null); } catch (e) { res(null); } });
+function idbGet(k) { if (!db) return Promise.resolve(null); return new Promise(res => { try { const r = db.transaction("c").objectStore("c").get(k); r.onsuccess = () => res(r.result || null); r.onerror = () => res(null); } catch (e) { res(null); } }); }
 
-async function toBitmaps(img, wav) { const c1 = new OffscreenCanvas(N, N); c1.getContext("2d").putImageData(img, 0, 0); const c2 = new OffscreenCanvas(N / 2, N / 2); c2.getContext("2d").putImageData(wav, 0, 0); return { c1, c2, g: c1.transferToImageBitmap ? await createImageBitmap(c1) : null, w: await createImageBitmap(c2) }; }
+const PXOF = { hi: 32, mid: 8 };
 onmessage = async e => {
   const m = e.data;
   if (m.type === "init") {
-    initNet(m.net); TEX = buildTex(m.tex); VERSION = m.version; db = await openDB();
-    // versão nova do build: limpa o cache L2
+    initNet(m.net); TEX = m.tex; for (const k in TEX) MIP[k] = { 4: mip(TEX[k], 4) }; VERSION = m.version; db = await openDB();
     if (db) { const v = await new Promise(res => { try { const r = db.transaction("meta").objectStore("meta").get("v"); r.onsuccess = () => res(r.result); r.onerror = () => res(null); } catch (er) { res(null); } });
-      if (v !== VERSION) { await tx("c", "readwrite", s => s.clear()); await tx("meta", "readwrite", s => s.put(VERSION, "v")); } }
+      if (v !== VERSION) { await txn("c", "readwrite", s => s.clear()); await txn("meta", "readwrite", s => s.put(VERSION, "v")); } }
     postMessage({ type: "ready" }); return;
   }
-  // nível de detalhe distante: 1 pixel por tile (zoom bem afastado)
-  if (m.type === "lod") {
-    const tiles = chunkTiles(m.cx, m.cy), n = CHUNK + 2, img = new ImageData(CHUNK, CHUNK), d = img.data;
-    for (let j = 0; j < CHUNK; j++) for (let i = 0; i < CHUNK; i++) { const b = tiles[(j + 1) * n + i + 1], o = (j * CHUNK + i) * 4; if (b === B.HEART) { d[o + 3] = 0; continue; }
-      const c = BIOME_RGB[b] || [90, 140, 70], x = m.cx * CHUNK + i, y = m.cy * CHUNK + j, f = .92 + (vnoise(x / 5, y / 5, 621) - .5) * .16 + (hashTile(x, y, 623) - .5) * .06;
-      d[o] = c[0] * f; d[o + 1] = c[1] * f; d[o + 2] = c[2] * f; d[o + 3] = 255; }
-    const bmp = await createImageBitmap(img); postMessage({ type: "lod", cx: m.cx, cy: m.cy, g: bmp }, [bmp]); return;
-  }
+  if (m.type === "lod") { const bmp = await createImageBitmap(renderLod(m.cx, m.cy)); postMessage({ type: "lod", cx: m.cx, cy: m.cy, g: bmp }, [bmp]); return; }
   if (m.type === "chunk") {
-    const k = m.cx + "," + m.cy;
+    const tier = m.tier || "hi", k = tier + ":" + m.cx + "," + m.cy;
     const hit = await idbGet(k);
-    if (hit) { try { const g = await createImageBitmap(hit.g), w = await createImageBitmap(hit.w); postMessage({ type: "chunk", cx: m.cx, cy: m.cy, g, w, src: "L2" }, [g, w]); return; } catch (er) { } }
-    const { img, wav } = renderChunk(m.cx, m.cy);
-    const { c1, c2 } = await toBitmaps(img, wav);
-    const g = await createImageBitmap(c1), w = await createImageBitmap(c2);
-    postMessage({ type: "chunk", cx: m.cx, cy: m.cy, g, w, src: "gen" }, [g, w]);
-    try { const [bg, bw] = await Promise.all([c1.convertToBlob({ type: "image/png" }), c2.convertToBlob({ type: "image/png" })]); await idbPut(k, { g: bg, w: bw }); } catch (er) { }
+    if (hit) { try { const g = await createImageBitmap(hit); postMessage({ type: "chunk", tier, cx: m.cx, cy: m.cy, g, src: "L2" }, [g]); return; } catch (er) { } }
+    const img = renderChunk(m.cx, m.cy, PXOF[tier]); const c = new OffscreenCanvas(img.width, img.height); c.getContext("2d").putImageData(img, 0, 0);
+    const g = await createImageBitmap(c);
+    postMessage({ type: "chunk", tier, cx: m.cx, cy: m.cy, g, src: "gen" }, [g]);
+    try { const blob = await c.convertToBlob({ type: "image/webp", quality: .9 }); if (db) await txn("c", "readwrite", s => s.put(blob, k)); } catch (er) { }
   }
 };

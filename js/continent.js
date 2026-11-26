@@ -17,7 +17,7 @@ const { CHUNK, B } = TR;
 export const CONT = { ready: false, net: null, overview: null, worker: null, stats: { gen: 0, l2: 0, hits: 0 } };
 
 // ---------- carga ----------
-function texData(tex) { const out = {}; for (const k of ["grass", "grass_dark", "sand", "cobble", "swamp", "rock", "snow"]) { const im = tex[k]; if (!im) continue; const w = im.width, h = im.height, c = document.createElement("canvas"); c.width = w; c.height = h; const g = c.getContext("2d"); g.drawImage(im, 0, 0); out[k] = { w, h, data: g.getImageData(0, 0, w, h).data }; } return out; }
+function texData(tex) { const out = {}; for (const k of ["grass", "grass_dark", "grass_gold", "sand", "cobble", "plaza", "swamp", "swamp_red", "rock", "stone_dark", "earth", "dirt", "snow", "ruins", "water", "lava", "bridge"]) { const im = tex[k]; if (!im) continue; const w = im.width, h = im.height, c = document.createElement("canvas"); c.width = w; c.height = h; const g = c.getContext("2d"); g.drawImage(im, 0, 0); out[k] = { w, h, data: g.getImageData(0, 0, w, h).data }; } return out; }
 export async function loadContinent(texSrc, version) {
   try { const tex = texData(texSrc);
     const net = await (await fetch("assets/world-net.json", { cache: "no-cache" })).json();
@@ -34,7 +34,7 @@ export function registerContent(net = CONT.net) {
   for (const m of net.monsters) if (!MONS[m.id]) { const k = { comum: 1, incomum: 1.3, elite: 2.4, miniboss: 6 }[m.cat] || 1;
     MONS[m.id] = { name: m.name, lvl: m.lvl, hp: Math.round(60 + Math.pow(m.lvl, 1.5) * 5 * k), atk: Math.round((8 + m.lvl * 1.6) * (1 + (k - 1) * .25)), def: Math.round(m.lvl * .5), exp: Math.round((10 + Math.pow(m.lvl, 1.7) * 2) * k), gold: [m.lvl, m.lvl * 2 + 2], speed: 1, drop: null, sprite: m.sprite, tint: m.tint, cat: m.cat }; }
   for (const h of net.hunts) if (!HUNTS.find(x => x.id === h.id)) { const r = h.r;
-    HUNTS.push({ id: h.id, name: h.name, why: `Anel ${h.ring} de ${net.cities.find(c => c.id === h.city).name}`, region: h.city, mon: h.mon, spawns: h.ring === 3 ? 6 : 7, respawn: 14000, r, cx: h.cx, cy: h.cy, rect: { x: h.cx - r, y: h.cy - r, w: 2 * r + 1, h: 2 * r + 1 }, door: [h.cx, h.cy - r], ring: h.ring, city: h.city, zone: ["anel1", "anel2", "anel3"][h.ring - 1] }); }
+    HUNTS.push({ id: h.id, name: h.name, why: `Anel ${h.ring} de ${net.cities.find(c => c.id === h.city).name}`, region: h.city, mon: h.mon, spawns: h.wild ? 5 : h.ring === 3 ? 6 : 7, respawn: 14000, r, cx: h.cx, cy: h.cy, rect: { x: h.cx - r, y: h.cy - r, w: 2 * r + 1, h: 2 * r + 1 }, door: [h.cx, h.cy - r], ring: h.ring, city: h.city, zone: ["anel1", "anel2", "anel3", "selvagem"][h.ring - 1] || "selvagem", wild: !!h.wild }); }
   for (const c of net.cities) if (!c.heart) for (const n of CITY_NPCS[c.id] || []) { const [dx, dy, voc, title, extra] = n; if (!NPCS.find(q => q.title === title && q.city === c.id)) NPCS.push({ x: c.x + dx, y: c.y + dy, voc, title, king: "grey", city: c.id, ...extra, dir: "down", moving: false, anim: 0, npc: true }); }
   ZONES.anel1 ||= { name: "Anel 1 · cidade", desc: "Zona segura: PvP desligado.", risk: "Sem risco", color: "#9cc287", tint: null };
   ZONES.anel2 ||= { name: "Anel 2 · fronteira", desc: "+30% exp e +25% drop. PvP só pra quem ligar (botão no topo): +20% exp e +15% loot.", risk: "Médio", color: "#e9c46a", tint: null };
@@ -138,22 +138,22 @@ export function extendPath(path, n = 2, budgetMs = 12) {
 }
 
 // ---------- chão (Worker + caches) ----------
-const L1 = new Map(), L1_MAX = 81, pending = new Set(); let inflight = 0;
+// cache L1 por nível: "hi" (32 px/tile, 1024 px por pedaço) e "mid" (8 px/tile)
+const L1 = { hi: new Map(), mid: new Map() }, L1_MAX = { hi: 40, mid: 220 }, pending = new Set(); let inflight = 0;
 function startWorker(net, tex, version) {
   try {
     const w = new Worker(new URL("./world.worker.js", import.meta.url), { type: "module" }); CONT.worker = w;
     w.onmessage = e => { const m = e.data; if (m.type === "lod") { lodInflight--; const k = m.cx + "," + m.cy; lodPending.delete(k); LOD.set(k, m.g); while (LOD.size > LOD_MAX) { const [k0, v] = LOD.entries().next().value; LOD.delete(k0); try { v.close(); } catch (er) { } } return; }
-      if (m.type !== "chunk") return; inflight--; const k = m.cx + "," + m.cy; pending.delete(k);
-      L1.set(k, { g: m.g, w: m.w }); CONT.stats[m.src === "L2" ? "l2" : "gen"]++;
-      while (L1.size > L1_MAX) { const [k0, v] = L1.entries().next().value; L1.delete(k0); try { v.g.close(); v.w.close(); } catch (er) { } } };
+      if (m.type !== "chunk") return; inflight--; const k = m.cx + "," + m.cy, M = L1[m.tier]; pending.delete(m.tier + ":" + k);
+      M.set(k, m.g); CONT.stats[m.src === "L2" ? "l2" : "gen"]++;
+      while (M.size > L1_MAX[m.tier]) { const [k0, v] = M.entries().next().value; M.delete(k0); try { v.close(); } catch (er) { } } };
     w.onerror = e => console.warn("worker do mundo", e.message);
     w.postMessage({ type: "init", net, tex, version: version || "dev" });
   } catch (e) { console.warn("sem worker", e); }
 }
-function request(cx, cy) { const k = cx + "," + cy; if (L1.has(k) || pending.has(k) || !CONT.worker || inflight >= 6) return; pending.add(k); inflight++; CONT.worker.postMessage({ type: "chunk", cx, cy }); }
+function request(tier, cx, cy) { const k = cx + "," + cy; if (L1[tier].has(k) || pending.has(tier + ":" + k) || !CONT.worker || inflight >= 4) return; pending.add(tier + ":" + k); inflight++; CONT.worker.postMessage({ type: "chunk", tier, cx, cy }); }
 const PXC = CHUNK * T;      // 1024 px de mundo por pedaço
-// desenha o chão do continente visível; o coração é desenhado por cima pelo art.js
-export const LOD_ZOOM = .12;
+export const LOD_ZOOM = .12, HI_ZOOM = .4;
 const LOD = new Map(), LOD_MAX = 2500, lodPending = new Set(); let lodInflight = 0;
 function requestLod(cx, cy) { const k = cx + "," + cy; if (LOD.has(k) || lodPending.has(k) || !CONT.worker || lodInflight >= 12) return; lodPending.add(k); lodInflight++; CONT.worker.postMessage({ type: "lod", cx, cy }); }
 // zoom bem afastado: pedaços de 1 pixel por tile; o que ainda não chegou usa o mapa-múndi
@@ -164,22 +164,27 @@ function drawLod(g, ox, oy, WW, WH) {
   for (let cy = cy0; cy <= cy1; cy++) for (let cx = cx0; cx <= cx1; cx++) { const b = LOD.get(cx + "," + cy); if (b) g.drawImage(b, cx * PXC, cy * PXC, PXC + 1, PXC + 1); else miss.push([cx, cy]); }
   miss.sort((a, b) => Math.hypot(a[0] - mid[0], a[1] - mid[1]) - Math.hypot(b[0] - mid[0], b[1] - mid[1])); for (const [cx, cy] of miss) requestLod(cx, cy);
 }
+// desenha o chão do continente visível; o coração é desenhado por cima pelo art.js
 export function drawContinent(g, ox, oy, WW, WH, t, zoom = 1) {
   if (!CONT.ready) return;
   if (zoom < LOD_ZOOM) return drawLod(g, ox, oy, WW, WH);
+  const tier = zoom >= HI_ZOOM ? "hi" : "mid", M = L1[tier];
   const cx0 = fl(ox / PXC), cy0 = fl(oy / PXC), cx1 = fl((ox + WW) / PXC), cy1 = fl((oy + WH) / PXC);
   const mid = [(cx0 + cx1) / 2, (cy0 + cy1) / 2], order = [];
   for (let cy = cy0; cy <= cy1; cy++) for (let cx = cx0; cx <= cx1; cx++) order.push([cx, cy]);
   order.sort((a, b) => Math.hypot(a[0] - mid[0], a[1] - mid[1]) - Math.hypot(b[0] - mid[0], b[1] - mid[1]));
-  const wv = Math.sin(t * 1.3) * 6, wa = .55 + Math.sin(t * .9) * .25;
   for (const [cx, cy] of order) {
     if (cx * CHUNK >= 0 && cy * CHUNK >= 0 && (cx + 1) * CHUNK <= 300 && (cy + 1) * CHUNK <= 200) continue;   // inteiro dentro do coração
-    const c = L1.get(cx + "," + cy), x = cx * PXC, y = cy * PXC;
-    if (c) { L1.delete(cx + "," + cy); L1.set(cx + "," + cy, c); CONT.stats.hits++; g.drawImage(c.g, x, y, PXC + 1, PXC + 1); g.globalAlpha = wa; g.drawImage(c.w, x + wv, y + wv * .4, PXC, PXC); g.globalAlpha = 1; }
-    else { request(cx, cy); if (CONT.overview) { const s = CHUNK / 10; g.imageSmoothingEnabled = true; g.drawImage(CONT.overview, (cx * CHUNK + TR.OX) / 10, (cy * CHUNK + TR.OY) / 10, s, s, x, y, PXC + 1, PXC + 1); g.imageSmoothingEnabled = false; } }
+    const k = cx + "," + cy, c = M.get(k), x = cx * PXC, y = cy * PXC;
+    if (c) { M.delete(k); M.set(k, c); CONT.stats.hits++; g.drawImage(c, x, y, PXC + .5, PXC + .5); continue; }
+    request(tier, cx, cy);
+    // enquanto não chega: o outro nível, ou o 1 px/tile, ou o mapa-múndi
+    const alt = (tier === "hi" ? L1.mid : L1.hi).get(k) || LOD.get(k);
+    if (alt) { g.imageSmoothingEnabled = alt.width < 64 ? false : true; g.drawImage(alt, x, y, PXC + .5, PXC + .5); g.imageSmoothingEnabled = false; }
+    else { requestLod(cx, cy); if (CONT.overview) { const s = CHUNK / 10; g.imageSmoothingEnabled = true; g.drawImage(CONT.overview, (cx * CHUNK + TR.OX) / 10, (cy * CHUNK + TR.OY) / 10, s, s, x, y, PXC + 1, PXC + 1); g.imageSmoothingEnabled = false; } }
   }
   // pré-carrega a volta
-  for (let cy = cy0 - 1; cy <= cy1 + 1; cy++) for (let cx = cx0 - 1; cx <= cx1 + 1; cx++) if (cy < cy0 || cy > cy1 || cx < cx0 || cx > cx1) request(cx, cy);
+  for (let cy = cy0 - 1; cy <= cy1 + 1; cy++) for (let cx = cx0 - 1; cx <= cx1 + 1; cx++) if (cy < cy0 || cy > cy1 || cx < cx0 || cx > cx1) request(tier, cx, cy);
 }
 // navios ancorados no porto (desenho simples, balançando)
 export function drawShips(g, t) { if (!CONT.ready) return; for (const p of CONT.net.ports) for (const [i, s] of p.ships.entries()) { const x = (s[0] + .5) * T, y = (s[1] + .5) * T + Math.sin(t * 1.4 + i) * 3;

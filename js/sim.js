@@ -38,7 +38,15 @@ export function newPlayer(name, voc, king) {
 export function spawnAll() {
   S.mons = [];
   const mk = (h, type, boss) => { const pos = freeTile(h); return { hunt: h.id, type, x: pos.x, y: pos.y, hp: MONS[type].hp, alive: !boss, respawnAt: boss ? now() + rr(2, 8) * 60000 : 0, cd: 0, face: 1, boss: !!boss, path: [], speed: MONS[type].speed === 2 ? 2.4 : 1.4, anim: 0, moving: false, think: Math.random() * 3 }; };
-  for (const h of HUNTS) { for (let i = 0; i < h.spawns; i++) S.mons.push(mk(h, h.mon)); if (h.boss) S.mons.push(mk(h, h.boss, true)); }
+  S.mk = mk; S.spawned = new Set();
+  for (const h of HUNTS) { if (h.city) continue; for (let i = 0; i < h.spawns; i++) S.mons.push(mk(h, h.mon)); if (h.boss) S.mons.push(mk(h, h.boss, true)); }
+}
+// áreas de caça do continente: monstros só existem perto da câmera/jogador (centenas de áreas sem pesar)
+export function spawnNear(cx, cy) {
+  if (!S.mk) return;
+  for (const h of HUNTS) { if (!h.city) continue; const d = Math.hypot(h.cx - cx, h.cy - cy);
+    if (d < 230 && !S.spawned.has(h.id)) { S.spawned.add(h.id); for (let i = 0; i < h.spawns; i++) S.mons.push(S.mk(h, h.mon)); }
+    else if (d > 420 && S.spawned.has(h.id) && S.p?.huntId !== h.id) { S.spawned.delete(h.id); S.mons = S.mons.filter(m => m.hunt !== h.id); } }
 }
 
 // ---------- derivados ----------

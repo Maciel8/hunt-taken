@@ -1,6 +1,7 @@
 // Boot em modo servidor: Supabase Auth → personagem → estado do servidor → animação local só visual.
 import { TICK, HUNTS, HOME } from "./data.js";
 import { buildWorld, huntAt, inVila, NPCS } from "./world.js";
+import { spawnNear } from "./sim.js";
 import { S, P, newPlayer, spawnAll, playerTick, monTick, applyServer, log, fmt, walkTo, updateMovement, npcTick, keys } from "./sim.js";
 import { loadAssets, A } from "./art.js";
 import { loadContinent, registerContent } from "./continent.js";
@@ -114,7 +115,7 @@ let acc = 0, last = performance.now();
 function frame(t) {
   const dt = Math.min(100, t - last); last = t; acc += dt; let n = 0;
   updateMovement(dt / 1000); updateOthers(dt / 1000);
-  while (acc >= TICK && n++ < 8) { acc -= TICK; S.t++; playerTick(); monTick(); npcTick(); dungeonTick(); gatherTick(); mythicTick(); if (S.t % 5 === 0) renderAll(); }
+  while (acc >= TICK && n++ < 8) { acc -= TICK; S.t++; playerTick(); if (S.t % 4 === 0) { const { VW, VH } = viewSize(); spawnNear((cam.x + VW / 2) / 32, (cam.y + VH / 2) / 32); } monTick(); npcTick(); dungeonTick(); gatherTick(); mythicTick(); if (S.t % 5 === 0) renderAll(); }
   render(dt / 1000); requestAnimationFrame(frame);
 }
 // versão nova publicada: recarrega sozinho (quem fica com a versão antiga não aparece pros outros)

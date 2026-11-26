@@ -2,7 +2,7 @@
 // Raster em unidades de desenho (1200x800, 4 por tile = 8 px por unidade) dá bordas orgânicas; colisão, regiões e objetos ficam por tile.
 import { MW, MH, MHA, IY, IYR, HUNTS, REGIONS, CAPITAL, TOWNS, ZONES } from "./data.js";
 import { procWalk, procRegion, procZone, findPathWide, isRoadProc } from "./continent.js";
-import { DW, DH, UPT, REG, RIVERS, LAKES, LAKE_POLYS, ROADS, BRIDGES, FARMS, riverCurves } from "./geo.js";
+import { DW, DH, UPT, REG, RIVERS, LAKES, LAKE_POLYS, ROADS, BRIDGES, FARMS, riverCurves, HEART_EXITS } from "./geo.js";
 
 export const hash = (x, y) => { let h = (x * 374761393 + y * 668265263) ^ 0x5bd1e995; h = (h ^ (h >>> 13)) * 1274126177; return (h ^ (h >>> 16)) >>> 0; };
 export const inRect = (r, x, y) => x >= r.x && y >= r.y && x < r.x + r.w && y < r.y + r.h;
@@ -223,22 +223,12 @@ function scatter() {
 // saídas do coração pro continente: uma em cada lado, a mais perto do meio da borda que já é alcançável (ou abre um corredor)
 export const EXITS = [];
 function carveExits() {
-  const start = idx(Math.round(VILA.cx / UPT), Math.round(VILA.cy / UPT) + 6), seen = new Uint8Array(MW * MHA), q = [start]; seen[start] = 1;
-  for (let i = 0; i < q.length; i++) { const c = q[i], cx = c % MW, cy = (c / MW) | 0; for (const [dx, dy] of [[1, 0], [-1, 0], [0, 1], [0, -1]]) { const nx = cx + dx, ny = cy + dy; if (nx < 0 || ny < 0 || nx >= MW || ny >= MH) continue; const n = idx(nx, ny); if (seen[n] || block[n]) continue; seen[n] = 1; q.push(n); } }
-  const sides = { n: [...Array(MW).keys()].map(x => [x, 0]), s: [...Array(MW).keys()].map(x => [x, MH - 1]), w: [...Array(MH).keys()].map(y => [0, y]), e: [...Array(MH).keys()].map(y => [MW - 1, y]) };
-  for (const [side, tiles] of Object.entries(sides)) {
-    const mid = tiles[tiles.length >> 1]; let best = null, bd = 1e9;
-    for (const [x, y] of tiles) if (seen[idx(x, y)]) { const d = Math.hypot(x - mid[0], y - mid[1]); if (d < bd) { bd = d; best = [x, y]; } }
-    if (!best || bd > tiles.length * .35) {
-      // corredor reto do meio da borda até a parte alcançável
-      const [x0, y0] = mid, dir = { n: [0, 1], s: [0, -1], w: [1, 0], e: [-1, 0] }[side]; let x = x0, y = y0;
-      for (let k = 0; k < 160 && !seen[idx(x, y)]; k++) { for (const o of [-1, 0, 1]) { const ax = side === "n" || side === "s" ? x + o : x, ay = side === "n" || side === "s" ? y : y + o; if (ax < 0 || ay < 0 || ax >= MW || ay >= MH) continue; block[idx(ax, ay)] = 0; occupied[idx(ax, ay)] = 0; } x += dir[0]; y += dir[1]; }
-      for (let i = objects.length - 1; i >= 0; i--) { const o = objects[i]; const along = side === "n" || side === "s" ? Math.abs(o.x - x0) <= 1 && (side === "n" ? o.y <= y : o.y >= y) : Math.abs(o.y - y0) <= 1 && (side === "w" ? o.x <= x : o.x >= x); if (along && o.y < MH) objects.splice(i, 1); }
-      best = mid;
-    }
-    // a faixa de 3 tiles da borda na saída fica livre
-    for (const o of [-1, 0, 1]) { const ax = side === "n" || side === "s" ? best[0] + o : best[0], ay = side === "n" || side === "s" ? best[1] : best[1] + o; if (ax >= 0 && ay >= 0 && ax < MW && ay < MH && unitsOfTile(ax, ay, U.water) < 3) block[idx(ax, ay)] = 0; }
-    EXITS.push({ side, x: best[0], y: best[1] });
+  // as estradas de saída (geo.js) chegam até a borda; libera a estrada e uma faixa de 3 tiles em volta da saída
+  for (let y = 0; y < MH; y++) for (let x = 0; x < MW; x++) if (isRoadTile(x, y) && (x < 3 || y < 3 || x > MW - 4 || y > MH - 4) && unitsOfTile(x, y, U.water) < 3) block[idx(x, y)] = 0;
+  for (const e of HEART_EXITS) {
+    for (let dy = -1; dy <= 1; dy++) for (let dx = -1; dx <= 1; dx++) { const x = e.x + dx, y = e.y + dy; if (x >= 0 && y >= 0 && x < MW && y < MH && unitsOfTile(x, y, U.water) < 3) block[idx(x, y)] = 0; }
+    for (let i = objects.length - 1; i >= 0; i--) { const o = objects[i]; if (Math.abs(o.x - e.x) <= 2 && Math.abs(o.y - e.y) <= 2 && !o.door) objects.splice(i, 1); }
+    EXITS.push(e);
   }
 }
 // borda do coração: região e água de cada tile do contorno (o continente usa pra costurar sem emenda)

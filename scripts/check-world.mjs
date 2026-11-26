@@ -19,7 +19,7 @@ ok(!blockedNodes.length, `${net.nodes.length} depósitos acessíveis` + (blocked
 let badHunts = net.hunts.filter(h => { let n = 0; for (let a = 0; a < 6.283; a += .4) for (const r of [0, 3, 6]) if (C.procWalk(Math.round(h.cx + Math.cos(a) * r), Math.round(h.cy + Math.sin(a) * r))) n++; return n < 30; });
 ok(!badHunts.length, `${net.hunts.length} áreas de caça abertas` + (badHunts.length ? ": " + badHunts.map(h => h.id).join(",") : ""));
 // estradas andáveis ponto a ponto (pontes onde cruzam rios)
-let badRoad = 0, bridges = 0; for (const r of net.roads) for (let i = 1; i < r.pts.length; i++) { const [a, b] = [r.pts[i - 1], r.pts[i]], n = Math.ceil(Math.hypot(b[0] - a[0], b[1] - a[1])); for (let k = 0; k <= n; k++) { const x = Math.round(a[0] + (b[0] - a[0]) * k / n), y = Math.round(a[1] + (b[1] - a[1]) * k / n); if (W.inHeart(x, y)) continue; const t = T.tileAt(x, y); if (t === T.B.BRIDGE) bridges++; if (T.isBlocked(t)) badRoad++; } }
+let badRoad = 0, bridges = 0; for (const r of net.roads) for (let i = 1; i < r.pts.length; i++) { const [a, b] = [r.pts[i - 1], r.pts[i]], n = Math.ceil(Math.hypot(b[0] - a[0], b[1] - a[1])); for (let k = 0; k <= n; k++) { const x = Math.floor(a[0] + (b[0] - a[0]) * k / n), y = Math.floor(a[1] + (b[1] - a[1]) * k / n); if (W.inHeart(x, y)) continue; const t = T.tileAt(x, y); if (t === T.B.BRIDGE) bridges++; if (T.isBlocked(t)) badRoad++; } }
 ok(badRoad === 0, `estradas sem bloqueio (${bridges} tiles de ponte)`);
 // cidades ligadas (caminho real, sem atravessar água/picos)
 const heartPath = (a, b, c, d) => [{ x: c, y: d }];

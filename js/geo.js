@@ -53,7 +53,14 @@ export const ROADS = [
   [[230,150],[180,260],[150,360],[170,470],[210,560],[220,650]],        // vila -> campos
   [[170,470],[290,520],[380,560],[470,640],[540,700],[700,700],[840,660],[930,640]], // campos -> torre -> minas
   [[880,440],[960,470],[1010,540],[980,600],[930,640]],                 // pântano -> minas
+  // saídas pro continente: continuam até a borda e seguem como estradas lá fora
+  [[700,70],[712,40],[722,12],[726,-8]],                                // norte (Forja de Khazad)
+  [[990,170],[1060,174],[1130,180],[1208,184]],                         // leste (Porto de Valen)
+  [[150,360],[100,370],[50,378],[-8,384]],                              // oeste (Bosques de Sylvana)
+  [[220,650],[226,700],[230,760],[232,808]],                            // sul (Oásis de Solkar)
 ];
+// ponto onde cada estrada de saída cruza a borda (em tiles)
+export const HEART_EXITS = [{ side: "n", x: 181, y: 0 }, { side: "e", x: 299, y: 46 }, { side: "w", x: 0, y: 96 }, { side: "s", x: 58, y: 199 }];
 // lagos com contorno irregular (mesmo desenho pra colisão e pra arte)
 export const LAKE_POLYS = LAKES.map(([x, y, rx, ry, a], i) => { const pts = []; for (let k = 0; k < 18; k++) { const t = k / 18 * 6.283; pts.push([x + Math.cos(t) * rx * Math.cos(a) - Math.sin(t) * ry * Math.sin(a), y + Math.cos(t) * rx * Math.sin(a) + Math.sin(t) * ry * Math.cos(a)]); } return { x, y, pts: rough(pts, 3, Math.min(rx, ry) * .55, 40 + i) }; });
 export const BRIDGES = [];   // calculadas no construtor: onde uma estrada cruza um rio nasce uma ponte no ângulo da estrada
