@@ -201,3 +201,6 @@ body[data-palette=spirit] canvas#view{filter:hue-rotate(55deg) saturate(.75) bri
 
 .behavior{padding-top:8px;padding-bottom:6px}.behavior h2,.huntp h2{margin-bottom:5px}label.ctl{height:26px}
 .ds-amulet{left:6px;top:12px}.ds-tool{right:6px;top:12px}
+
+.attr .pm button{min-width:34px;padding:4px 6px}.attr .num .pendv{color:var(--green);font-size:11px;margin-left:3px}
+.attr{grid-template-columns:minmax(0,1fr) 64px 118px}.attr .num{white-space:nowrap}
